@@ -1,0 +1,2430 @@
+<!doctype html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>GazouFilter | 画像フィルターツール</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+        <style>
+            body {
+                font-family: "Inter", "Noto Sans JP", sans-serif;
+                overscroll-behavior: none;
+                -webkit-tap-highlight-color: transparent;
+                touch-action: manipulation;
+            }
+            .placeholder {
+                border: 3px dashed #cbd5e1;
+                transition: all 0.3s ease;
+            }
+            .placeholder.dragover {
+                border-color: #3b82f6;
+                background-color: #eff6ff;
+            }
+            #filter-list .filter-item {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+                padding: 0.75rem;
+                background-color: #f8fafc; /* slate-50 */
+                border: 1px solid #e2e8f0; /* slate-200 */
+                border-radius: 0.5rem;
+            }
+            #filter-list .filter-item:not(:last-child) {
+                margin-bottom: 0.5rem;
+            }
+            .handle {
+                cursor: move;
+                color: #9ca3af;
+            }
+            .ghost {
+                opacity: 0.4;
+                background: #c8ebfb;
+            }
+
+            .tab-btn {
+                padding: 0.5rem 1rem;
+                border-bottom: 2px solid transparent;
+                color: #64748b; /* slate-500 */
+                font-weight: 500;
+                white-space: nowrap;
+            }
+            .tab-btn.active {
+                color: #3b82f6; /* blue-600 */
+                border-color: #3b82f6; /* blue-600 */
+            }
+            .filter-add-btn {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 0.25rem;
+                padding: 0.5rem;
+                border-radius: 0.5rem;
+                background-color: #f1f5f9; /* slate-100 */
+                transition: all 0.2s ease;
+                text-align: center;
+                width: 100%;
+                height: 100%;
+            }
+            .filter-add-btn:hover {
+                background-color: #e2e8f0; /* slate-200 */
+                color: #3b82f6;
+            }
+            .filter-add-btn span {
+                font-size: 0.75rem;
+                line-height: 1.1;
+            }
+
+            /* Mobile optimizations */
+            @media (max-width: 768px) {
+                .container {
+                    padding: 1rem !important;
+                }
+                input[type="range"] {
+                    height: 2rem;
+                    -webkit-appearance: none;
+                    appearance: none;
+                }
+                input[type="range"]::-webkit-slider-thumb {
+                    width: 1.5rem;
+                    height: 1.5rem;
+                }
+                input[type="range"]::-moz-range-thumb {
+                    width: 1.5rem;
+                    height: 1.5rem;
+                }
+                .filter-item {
+                    padding: 1rem !important;
+                }
+                button {
+                    min-height: 44px;
+                    -webkit-tap-highlight-color: transparent;
+                }
+            }
+        </style>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    </head>
+    <body class="bg-slate-100 text-slate-800">
+        <div class="container mx-auto p-4 md:p-8">
+            <header class="text-center mb-8">
+                <h1 class="text-3xl md:text-4xl font-bold text-slate-900">
+                    GazouFilter | 画像フィルターツール
+                </h1>
+                <p class="text-slate-600 mt-2">
+                    ブラウザですぐ使える、画像加工ツール✨
+                </p>
+                <div class="mt-3 text-sm text-slate-500">
+                    作成者: しるべ (X: <a href="https://x.com/qxoiuioxp" target="_blank" class="text-blue-600 hover:underline">@qxoiuioxp</a>)
+                </div>
+            </header>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <!-- Controls Column -->
+                <div
+                    class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit space-y-6"
+                >
+                    <!-- Add Filter Section -->
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800 mb-3">
+                            1. フィルターを追加
+                        </h3>
+                        <!-- Tab Headers -->
+                        <div class="border-b border-gray-200 overflow-x-auto">
+                            <nav
+                                id="filter-tabs"
+                                class="-mb-px flex"
+                                aria-label="Tabs"
+                            >
+                                <button
+                                    class="tab-btn active"
+                                    data-tab="presets"
+                                >
+                                    プリセット
+                                </button>
+                                <button class="tab-btn" data-tab="adjust">
+                                    調整
+                                </button>
+                                <button class="tab-btn" data-tab="effects">
+                                    効果
+                                </button>
+                                <button class="tab-btn" data-tab="special">
+                                    特殊
+                                </button>
+                            </nav>
+                        </div>
+                        <!-- Tab Content -->
+                        <div class="pt-4">
+                            <div
+                                id="tab-content-presets"
+                                class="tab-panel grid grid-cols-2 sm:grid-cols-3 gap-3"
+                            >
+                                <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-orange-400 to-pink-500 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="sunset"
+                                >
+                                    🌅 夕焼け
+                                </button>
+                                <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-indigo-900 to-purple-900 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="night"
+                                >
+                                    🌙 夜
+                                </button>
+                                <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-cyan-400 to-blue-500 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="game"
+                                >
+                                    🎮 ゲーム風
+                                </button>
+                                <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-red-400 to-yellow-400 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="warm"
+                                >
+                                    🔥 暖色
+                                </button>
+                                <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-blue-400 to-cyan-400 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="cool"
+                                >
+                                    ❄️ 寒色
+                                </button>
+                            </div>
+                            <div
+                                id="tab-content-adjust"
+                                class="tab-panel hidden grid grid-cols-3 sm:grid-cols-4 gap-2"
+                            >
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="brightness"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"
+                                        ></path></svg
+                                    ><span>明度</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="contrast"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 18.5A6.5 6.5 0 1012 5.5a6.5 6.5 0 000 13zM12 5.5V1"
+                                        ></path></svg
+                                    ><span>ｺﾝﾄﾗｽﾄ</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="saturate"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+                                        ></path></svg
+                                    ><span>彩度</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="exposure"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 6.168a5.832 5.832 0 100 11.664 5.832 5.832 0 000-11.664zM12 2v2m0 16v2m-8-9H2m20 0h-2"
+                                        ></path></svg
+                                    ><span>露出</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="hue-rotate"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                                            transform="rotate(90 12 12)"
+                                        ></path></svg
+                                    ><span>色相回転</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="opacity"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 12c-4.418 0-8-3.582-8-8s3.582-8 8-8 8 3.582 8 8-3.582 8-8 8zm0 0v10"
+                                        ></path>
+                                        <path
+                                            d="M12 12a8 8 0 00-8 8h16a8 8 0 00-8-8z"
+                                            style="opacity: 0.5"
+                                        ></path></svg
+                                    ><span>不透明度</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="red"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="#ef4444"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M12 12a8 8 0 100-16 8 8 0 000 16z"
+                                        /></svg
+                                    ><span>赤チャンネル</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="green"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="#22c55e"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M12 12a8 8 0 100-16 8 8 0 000 16z"
+                                        /></svg
+                                    ><span>緑チャンネル</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="blue"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="#3b82f6"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M12 12a8 8 0 100-16 8 8 0 000 16z"
+                                        /></svg
+                                    ><span>青チャンネル</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="temperature"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M9 11l3-3m0 0l3 3m-3-3v8m0-13a9 9 0 110 18 9 9 0 010-18z"
+                                        ></path></svg
+                                    ><span>色温度</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="vibrance"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                                        ></path></svg
+                                    ><span>自然な彩度</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="gamma"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"
+                                        ></path></svg
+                                    ><span>ガンマ</span>
+                                </button>
+                            </div>
+                            <div
+                                id="tab-content-effects"
+                                class="tab-panel hidden grid grid-cols-3 sm:grid-cols-4 gap-2"
+                            >
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="grayscale"
+                                >
+                                    <svg
+                                        class="w-6 h-6 fill-current text-slate-500"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01"
+                                        ></path></svg
+                                    ><span>ｸﾞﾚｰｽｹｰﾙ</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="sepia"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+                                        ></path></svg
+                                    ><span>セピア</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="invert"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 4v16m8-8H4"
+                                        ></path></svg
+                                    ><span>反転</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="blur"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M13 10V3L4 14h7v7l9-11h-7z"
+                                        ></path></svg
+                                    ><span>ぼかし</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="noise"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M2 6h2v2H2V6zm0 4h2v2H2v-2zm0 4h2v2H2v-2zm4 4h2v2H6v-2zM6 2H4v2h2V2zm0 12h2v2H6v-2zM10 2h2v2h-2V2zm0 4h2v2h-2V6zm0 12h2v2h-2v-2zm0-4h2v2h-2v-2zm8 4h2v2h-2v-2zm0-12h2v2h-2V6zm-4 8h2v2h-2v-2zm-4 4h2v2h-2v-2zm8-8h2v2h-2V6zm4 0h2v2h-2V6zm0 4h2v2h-2v-2zm0-8h2v2h-2V2zm-4 0h2v2h-2V2zm4 12h2v2h-2v-2zm-8 4h2v2h-2v-2zm-4-4h2v2H6v-2z"
+                                        ></path></svg
+                                    ><span>ノイズ</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="vignette"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 16c-3.86 0-7-3.14-7-7s3.14-7 7-7 7 3.14 7 7-3.14 7-7 7z"
+                                            opacity=".4"
+                                        />
+                                        <path
+                                            d="M12 5c-3.86 0-7 3.14-7 7s3.14 7 7 7 7-3.14 7-7-3.14-7-7-7z"
+                                        /></svg
+                                    ><span>ビネット</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="colorize"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343"
+                                        ></path></svg
+                                    ><span>着色</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="duotone"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"
+                                        ></path></svg
+                                    ><span>2階調</span>
+                                </button>
+                            </div>
+                            <div
+                                id="tab-content-special"
+                                class="tab-panel hidden grid grid-cols-3 sm:grid-cols-4 gap-2"
+                            >
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="threshold"
+                                >
+                                    <svg
+                                        class="w-6 h-6 fill-current text-slate-500"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M12 14l9-5-9-5-9 5 9 5z"
+                                        ></path>
+                                        <path
+                                            d="M12 14l6.16-3.422A12.083 12.083 0 0121 12c0 6.627-5.373 12-12 12S-3 18.627-3 12a12.083 12.083 0 012.84-6.422L12 14z"
+                                        ></path></svg
+                                    ><span>二値化</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="pixelate"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M2 2h4v4H2zm5 0h4v4H7zm5 0h4v4h-4zm5 0h4v4h-4zM2 7h4v4H2zm5 0h4v4H7zm5 0h4v4h-4zm5 0h4v4h-4zM2 12h4v4H2zm5 0h4v4H7zm5 0h4v4h-4zm5 0h4v4h-4zM2 17h4v4H2zm5 0h4v4H7zm5 0h4v4h-4zm5 0h4v4h-4z"
+                                        ></path></svg
+                                    ><span>ピクセル化</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="posterize"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M3 21v-4a2 2 0 012-2h14a2 2 0 012 2v4M8 21v-2a2 2 0 012-2h4a2 2 0 012 2v2M4 11v-2a2 2 0 012-2h12a2 2 0 012 2v2M10 11V3"
+                                        ></path></svg
+                                    ><span>ポスタライズ</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="sharpen"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M3 21l8-18 8 18-16-12h16"
+                                        ></path></svg
+                                    ><span>シャープ</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="emboss"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                                        ></path></svg
+                                    ><span>エンボス</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="solarize"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 3a9 9 0 00-9 9c0 2.38 1.01 4.6 2.64 6.13M12 3v18M21 12a9 9 0 00-2.64-6.13"
+                                        ></path>
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 21a9 9 0 009-9"
+                                        ></path></svg
+                                    ><span>ｿﾗﾘｾﾞｰｼｮﾝ</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="tonecurve"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"
+                                        ></path></svg
+                                    ><span>トーンカーブ</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="edge"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M4 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM14 5a1 1 0 011-1h4a1 1 0 011 1v7a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zM14 16a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1v-3z"
+                                        ></path></svg
+                                    ><span>輪郭線</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="bloom"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                                        ></path></svg
+                                    ><span>ブルーム</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Applied Filters Section -->
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800 mb-3">
+                            2. 適用中のフィルター
+                        </h3>
+                        <div
+                            id="filter-list-container"
+                            class="bg-slate-100 p-3 rounded-lg min-h-[100px] space-y-2"
+                        >
+                            <div id="filter-list"></div>
+                            <p
+                                id="no-filters-msg"
+                                class="text-center text-slate-500 text-sm py-4"
+                            >
+                                フィルターがありません
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Actions Section -->
+                    <div>
+                        <h3 class="text-lg font-bold text-slate-800 mb-3">
+                            3. アクション
+                        </h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                            <button
+                                id="upload-btn"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition"
+                            >
+                                <svg
+                                    class="w-5 h-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                                    ></path></svg
+                                >開く
+                            </button>
+                            <button
+                                id="batch-upload-btn"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition"
+                            >
+                                <svg
+                                    class="w-5 h-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                                    ></path></svg
+                                >一括
+                            </button>
+                            <button
+                                id="save-btn"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                            >
+                                <svg
+                                    class="w-5 h-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                                    ></path></svg
+                                >保存
+                            </button>
+                            <div class="relative">
+                                <button
+                                    id="compress-btn"
+                                    class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition"
+                                >
+                                    <svg
+                                        class="w-5 h-5"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+                                        ></path></svg
+                                    >圧縮
+                                </button>
+                                <div id="compress-menu" class="hidden absolute bottom-full mb-1 left-0 right-0 bg-white rounded-lg shadow-lg border border-slate-200 overflow-hidden z-10">
+                                    <button class="compress-option w-full px-4 py-2 text-left text-sm hover:bg-slate-100 transition" data-format="png">PNG形式で圧縮</button>
+                                    <button class="compress-option w-full px-4 py-2 text-left text-sm hover:bg-slate-100 transition" data-format="jpeg">JPEG形式で圧縮</button>
+                                </div>
+                            </div>
+                            <button
+                                id="resize-btn"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition"
+                            >
+                                <svg
+                                    class="w-5 h-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"
+                                    ></path></svg
+                                >リサイズ
+                            </button>
+                            <button
+                                id="reset-btn"
+                                class="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
+                            >
+                                <svg
+                                    class="w-5 h-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    ></path></svg
+                                >リセット
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- How to Use Section -->
+                    <div class="mt-6 p-4 bg-blue-50 rounded-lg">
+                        <h3 class="text-md font-bold text-slate-800 mb-2">使い方</h3>
+                        <ol class="text-sm text-slate-700 space-y-1 list-decimal list-inside">
+                            <li>画像を開くボタンまたはドラッグ＆ドロップで読み込み</li>
+                            <li><strong>プリセット</strong>で即座に雰囲気を変更、または個別フィルターを追加</li>
+                            <li>スライダーで強度を調整</li>
+                            <li>保存ボタンでダウンロード</li>
+                            <li>一括ボタンで複数画像を同時処理可能</li>
+                        </ol>
+                        <div class="mt-3 pt-3 border-t border-blue-200">
+                            <p class="text-xs font-semibold text-slate-700 mb-1">キーボードショートカット:</p>
+                            <ul class="text-xs text-slate-600 space-y-0.5">
+                                <li>• Ctrl+O: 画像を開く</li>
+                                <li>• Ctrl+S: 保存</li>
+                                <li>• Ctrl+I: リサイズ</li>
+                                <li>• Ctrl+R: リセット</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- Terms Section -->
+                    <div class="mt-4 p-4 bg-amber-50 rounded-lg">
+                        <h3 class="text-md font-bold text-slate-800 mb-2">利用規約</h3>
+                        <p class="text-sm text-slate-700">
+                            このツールは自由にご利用いただけます！制限は設けません。<br>
+                            ただし、読み込ませた画像に利用規約等がある場合はそちらを優先してください。<br>
+                            <strong>※本ツールの利用による一切の責任は負いかねます。</strong>
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Image Preview Column -->
+                <div class="lg:col-span-2">
+                    <div
+                        id="image-drop-zone"
+                        class="placeholder rounded-xl bg-white h-full flex items-center justify-center min-h-[400px]"
+                    >
+                        <div
+                            id="placeholder-content"
+                            class="text-center text-slate-500"
+                        >
+                            <svg
+                                class="mx-auto h-16 w-16"
+                                stroke="currentColor"
+                                fill="none"
+                                viewBox="0 0 48 48"
+                                aria-hidden="true"
+                            >
+                                <path
+                                    d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8"
+                                    stroke-width="2"
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                ></path>
+                            </svg>
+                            <p class="mt-4">ここに画像をドラッグ＆ドロップ</p>
+                            <p class="text-sm">または[開く]をクリック</p>
+                        </div>
+                        <div
+                            id="preview-container"
+                            class="hidden w-full h-full p-2"
+                        >
+                            <img
+                                id="preview-image"
+                                class="max-w-full max-h-full object-contain mx-auto"
+                                draggable="true"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hidden elements for processing -->
+        <img id="original-image" class="hidden" />
+        <canvas id="processing-canvas" class="hidden"></canvas>
+        <input type="file" id="file-input" class="hidden" accept="image/*" />
+        <input type="file" id="batch-file-input" class="hidden" accept="image/*" multiple />
+
+        <!-- Progress Bar Modal -->
+        <div id="progress-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                <h3 class="text-lg font-bold text-slate-800 mb-4">処理中...</h3>
+                <div class="w-full bg-slate-200 rounded-full h-4 mb-2">
+                    <div id="progress-bar" class="bg-blue-600 h-4 rounded-full transition-all duration-300" style="width: 0%"></div>
+                </div>
+                <p id="progress-text" class="text-sm text-slate-600 text-center">0 / 0</p>
+            </div>
+        </div>
+
+        <script>
+            document.addEventListener("DOMContentLoaded", () => {
+                const imageDropZone =
+                    document.getElementById("image-drop-zone");
+                const placeholderContent = document.getElementById(
+                    "placeholder-content",
+                );
+                const previewContainer =
+                    document.getElementById("preview-container");
+                const previewImage = document.getElementById("preview-image");
+                const fileInput = document.getElementById("file-input");
+                const originalImage = document.getElementById("original-image");
+                const processingCanvas =
+                    document.getElementById("processing-canvas");
+                const filterListEl = document.getElementById("filter-list");
+                const noFiltersMsg = document.getElementById("no-filters-msg");
+
+                const uploadBtn = document.getElementById("upload-btn");
+                const batchUploadBtn = document.getElementById("batch-upload-btn");
+                const batchFileInput = document.getElementById("batch-file-input");
+                const saveBtn = document.getElementById("save-btn");
+                const compressBtn = document.getElementById("compress-btn");
+                const compressMenu = document.getElementById("compress-menu");
+                const resizeBtn = document.getElementById("resize-btn");
+                const resetBtn = document.getElementById("reset-btn");
+                const progressModal = document.getElementById("progress-modal");
+                const progressBar = document.getElementById("progress-bar");
+                const progressText = document.getElementById("progress-text");
+
+                const filterTabsContainer =
+                    document.getElementById("filter-tabs");
+                const tabPanels = document.querySelectorAll(".tab-panel");
+
+                let filters = [];
+                let imageLoaded = false;
+                let currentFileName = "filtered-image.png";
+                let renderTimeout = null;
+                let isBatchProcessing = false;
+
+                // カスタムフィルタータイプのリスト（一元管理）
+                const CUSTOM_FILTER_TYPES = [
+                    "threshold", "pixelate", "posterize", "red", "green", "blue",
+                    "noise", "vignette", "solarize", "sharpen", "exposure", "emboss",
+                    "temperature", "vibrance", "gamma", "colorize", "duotone",
+                    "tonecurve", "edge", "bloom"
+                ];
+
+                // 畳み込みフィルター適用関数（共通）
+                const applyConvolution = (src, dst, kernel, blend, offset = 0) => {
+                    const srcData = src.data;
+                    const dstData = dst.data;
+                    const width = src.width;
+                    const height = src.height;
+                    const kernelSize = kernel.length;
+                    const halfKernel = Math.floor(kernelSize / 2);
+                    const originalData = new Uint8ClampedArray(srcData);
+
+                    for (let y = 0; y < height; y++) {
+                        for (let x = 0; x < width; x++) {
+                            let r = 0, g = 0, b = 0;
+                            for (let ky = 0; ky < kernelSize; ky++) {
+                                for (let kx = 0; kx < kernelSize; kx++) {
+                                    const scx = Math.min(width - 1, Math.max(0, x + kx - halfKernel));
+                                    const scy = Math.min(height - 1, Math.max(0, y + ky - halfKernel));
+                                    const srcI = (scy * width + scx) * 4;
+                                    const weight = kernel[ky][kx];
+                                    r += srcData[srcI] * weight;
+                                    g += srcData[srcI + 1] * weight;
+                                    b += srcData[srcI + 2] * weight;
+                                }
+                            }
+                            const dstI = (y * width + x) * 4;
+                            dstData[dstI] = originalData[dstI] * (1 - blend) + (r + offset) * blend;
+                            dstData[dstI + 1] = originalData[dstI + 1] * (1 - blend) + (g + offset) * blend;
+                            dstData[dstI + 2] = originalData[dstI + 2] * (1 - blend) + (b + offset) * blend;
+                        }
+                    }
+                };
+
+                // カスタムフィルター適用関数（共通）
+                const applyCustomFilterToImageData = (imageData, filter, w, h) => {
+                    const data = imageData.data;
+
+                    if (filter.type === "threshold") {
+                        const v = filter.value;
+                        for (let i = 0; i < data.length; i += 4) {
+                            const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                            const color = avg < v ? 0 : 255;
+                            data[i] = data[i + 1] = data[i + 2] = color;
+                        }
+                    } else if (filter.type === "posterize") {
+                        const levels = filter.value;
+                        const baseColors = filter.params?.[0]?.value || "none";
+                        const customColor = filter.params?.[1]?.value || "#ff0000";
+                        if (levels > 1) {
+                            const step = 255 / (levels - 1);
+                            let baseR = 0, baseG = 0, baseB = 0;
+                            if (baseColors === "custom") {
+                                const hex = customColor.replace('#', '');
+                                baseR = parseInt(hex.substr(0, 2), 16);
+                                baseG = parseInt(hex.substr(2, 2), 16);
+                                baseB = parseInt(hex.substr(4, 2), 16);
+                            }
+                            for (let i = 0; i < data.length; i += 4) {
+                                let r = Math.round(data[i] / step) * step;
+                                let g = Math.round(data[i + 1] / step) * step;
+                                let b = Math.round(data[i + 2] / step) * step;
+                                if (baseColors === "red") {
+                                    r = Math.min(255, r * 1.2);
+                                    g *= 0.8;
+                                    b *= 0.8;
+                                } else if (baseColors === "green") {
+                                    r *= 0.8;
+                                    g = Math.min(255, g * 1.2);
+                                    b *= 0.8;
+                                } else if (baseColors === "blue") {
+                                    r *= 0.8;
+                                    g *= 0.8;
+                                    b = Math.min(255, b * 1.2);
+                                } else if (baseColors === "warm") {
+                                    r = Math.min(255, r * 1.1);
+                                    g = Math.min(255, g * 1.05);
+                                    b *= 0.9;
+                                } else if (baseColors === "cool") {
+                                    r *= 0.9;
+                                    g = Math.min(255, g * 1.05);
+                                    b = Math.min(255, b * 1.1);
+                                } else if (baseColors === "custom") {
+                                    const gray = (r + g + b) / 3;
+                                    const blend = 0.3;
+                                    r = r * (1 - blend) + (baseR / 255) * gray * blend;
+                                    g = g * (1 - blend) + (baseG / 255) * gray * blend;
+                                    b = b * (1 - blend) + (baseB / 255) * gray * blend;
+                                }
+                                data[i] = r;
+                                data[i + 1] = g;
+                                data[i + 2] = b;
+                            }
+                        }
+                    } else if (["red", "green", "blue"].includes(filter.type)) {
+                        const channelIndex = { red: 0, green: 1, blue: 2 }[filter.type];
+                        const mult = filter.value / 100;
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i + channelIndex] *= mult;
+                        }
+                    } else if (filter.type === "exposure") {
+                        const mult = filter.value / 100;
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] *= mult;
+                            data[i + 1] *= mult;
+                            data[i + 2] *= mult;
+                        }
+                    } else if (filter.type === "noise") {
+                        const amount = filter.value;
+                        for (let i = 0; i < data.length; i += 4) {
+                            const noise = (Math.random() - 0.5) * amount;
+                            data[i] += noise;
+                            data[i + 1] += noise;
+                            data[i + 2] += noise;
+                        }
+                    } else if (filter.type === "vignette") {
+                        const amount = filter.value / 100;
+                        const shape = filter.params?.[0]?.value || "circle";
+                        const centerX = w / 2;
+                        const centerY = h / 2;
+                        const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                const i = (y * w + x) * 4;
+                                const dx = x - centerX;
+                                const dy = y - centerY;
+                                let dist;
+                                if (shape === "square") {
+                                    dist = Math.max(Math.abs(dx), Math.abs(dy)) / Math.max(centerX, centerY);
+                                } else {
+                                    dist = Math.sqrt(dx * dx + dy * dy) / maxDist;
+                                }
+                                const darkness = Math.pow(dist, 2) * amount;
+                                data[i] *= 1 - darkness;
+                                data[i + 1] *= 1 - darkness;
+                                data[i + 2] *= 1 - darkness;
+                            }
+                        }
+                    } else if (filter.type === "solarize") {
+                        const threshold = filter.value;
+                        for (let i = 0; i < data.length; i += 4) {
+                            if (data[i] < threshold) data[i] = 255 - data[i];
+                            if (data[i + 1] < threshold) data[i + 1] = 255 - data[i + 1];
+                            if (data[i + 2] < threshold) data[i + 2] = 255 - data[i + 2];
+                        }
+                    } else if (filter.type === "sharpen" || filter.type === "emboss") {
+                        const amount = filter.value / 100;
+                        if (amount > 0) {
+                            const kernel = filter.type === "sharpen"
+                                ? [[0, -1, 0], [-1, 5, -1], [0, -1, 0]]
+                                : [[-2, -1, 0], [-1, 1, 1], [0, 1, 2]];
+                            const offset = filter.type === "emboss" ? 128 : 0;
+                            const sourceImageData = new ImageData(new Uint8ClampedArray(imageData.data), w, h);
+                            applyConvolution(sourceImageData, imageData, kernel, amount, offset);
+                        }
+                    } else if (filter.type === 'temperature') {
+                        const temp = (filter.value - 50) / 50;
+                        for (let i = 0; i < data.length; i += 4) {
+                            if (temp > 0) {
+                                data[i] = Math.min(255, data[i] + temp * 40);
+                                data[i + 2] = Math.max(0, data[i + 2] - temp * 40);
+                            } else {
+                                data[i] = Math.max(0, data[i] + temp * 40);
+                                data[i + 2] = Math.min(255, data[i + 2] - temp * 40);
+                            }
+                        }
+                    } else if (filter.type === 'vibrance') {
+                        const amount = filter.value / 100;
+                        for (let i = 0; i < data.length; i += 4) {
+                            const r = data[i], g = data[i + 1], b = data[i + 2];
+                            const max = Math.max(r, g, b);
+                            const avg = (r + g + b) / 3;
+                            const amt = ((Math.abs(max - avg) * 2 / 255) * amount) / 2;
+                            data[i] = r + (r - avg) * amt;
+                            data[i + 1] = g + (g - avg) * amt;
+                            data[i + 2] = b + (b - avg) * amt;
+                        }
+                    } else if (filter.type === 'gamma') {
+                        const gamma = filter.value / 100;
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = 255 * Math.pow(data[i] / 255, gamma);
+                            data[i + 1] = 255 * Math.pow(data[i + 1] / 255, gamma);
+                            data[i + 2] = 255 * Math.pow(data[i + 2] / 255, gamma);
+                        }
+                    } else if (filter.type === 'colorize') {
+                        const hue = filter.value;
+                        for (let i = 0; i < data.length; i += 4) {
+                            const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                            const h = hue / 360, s = 0.5, l = gray / 255;
+                            const c = (1 - Math.abs(2 * l - 1)) * s;
+                            const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+                            const m = l - c / 2;
+                            let r, g, b;
+                            if (h < 1/6) { r = c; g = x; b = 0; }
+                            else if (h < 2/6) { r = x; g = c; b = 0; }
+                            else if (h < 3/6) { r = 0; g = c; b = x; }
+                            else if (h < 4/6) { r = 0; g = x; b = c; }
+                            else if (h < 5/6) { r = x; g = 0; b = c; }
+                            else { r = c; g = 0; b = x; }
+                            data[i] = (r + m) * 255;
+                            data[i + 1] = (g + m) * 255;
+                            data[i + 2] = (b + m) * 255;
+                        }
+                    } else if (filter.type === 'tonecurve') {
+                        const curveType = filter.params?.[0]?.value || "s";
+                        const amount = filter.value / 100;
+                        const lut = new Uint8Array(256);
+                        for (let i = 0; i < 256; i++) {
+                            const x = i / 255;
+                            let y;
+                            if (curveType === "s") {
+                                y = (Math.sin((x - 0.5) * Math.PI) + 1) / 2;
+                            } else if (curveType === "inverse-s") {
+                                y = 0.5 - Math.sin((x - 0.5) * Math.PI) / 2;
+                            } else if (curveType === "brighten") {
+                                y = Math.pow(x, 0.7);
+                            } else if (curveType === "darken") {
+                                y = Math.pow(x, 1.5);
+                            } else {
+                                y = x;
+                            }
+                            lut[i] = Math.round((x * (1 - amount) + y * amount) * 255);
+                        }
+                        for (let i = 0; i < data.length; i += 4) {
+                            data[i] = lut[data[i]];
+                            data[i + 1] = lut[data[i + 1]];
+                            data[i + 2] = lut[data[i + 2]];
+                        }
+                    } else if (filter.type === 'edge') {
+                        const edgeKernel = [[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]];
+                        const invert = filter.params?.[0]?.value === "invert";
+                        const sourceImageData = new ImageData(new Uint8ClampedArray(imageData.data), w, h);
+                        applyConvolution(sourceImageData, imageData, edgeKernel, 1, 0);
+                        if (invert) {
+                            for (let i = 0; i < data.length; i += 4) {
+                                data[i] = 255 - data[i];
+                                data[i + 1] = 255 - data[i + 1];
+                                data[i + 2] = 255 - data[i + 2];
+                            }
+                        }
+                    } else if (filter.type === 'bloom') {
+                        const threshold = filter.value;
+                        const intensity = (filter.params?.[0]?.value || 50) / 100;
+                        for (let i = 0; i < data.length; i += 4) {
+                            const brightness = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                            if (brightness >= threshold) {
+                                const boost = 1 + (brightness - threshold) / (255 - threshold) * intensity;
+                                data[i] = Math.min(255, data[i] * boost);
+                                data[i + 1] = Math.min(255, data[i + 1] * boost);
+                                data[i + 2] = Math.min(255, data[i + 2] * boost);
+                            }
+                        }
+                    } else if (filter.type === 'duotone') {
+                        const amount = filter.value / 100;
+                        const shadowColor = filter.params?.[0]?.value || "#1a1a4d";
+                        const highlightColor = filter.params?.[1]?.value || "#ff6b9d";
+                        const parseShadow = shadowColor.replace('#', '');
+                        const shadowR = parseInt(parseShadow.substr(0, 2), 16);
+                        const shadowG = parseInt(parseShadow.substr(2, 2), 16);
+                        const shadowB = parseInt(parseShadow.substr(4, 2), 16);
+                        const parseHighlight = highlightColor.replace('#', '');
+                        const highlightR = parseInt(parseHighlight.substr(0, 2), 16);
+                        const highlightG = parseInt(parseHighlight.substr(2, 2), 16);
+                        const highlightB = parseInt(parseHighlight.substr(4, 2), 16);
+                        for (let i = 0; i < data.length; i += 4) {
+                            const gray = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                            const t = gray / 255;
+                            const r = shadowR * (1 - t) + highlightR * t;
+                            const g = shadowG * (1 - t) + highlightG * t;
+                            const b = shadowB * (1 - t) + highlightB * t;
+                            data[i] = data[i] * (1 - amount) + r * amount;
+                            data[i + 1] = data[i + 1] * (1 - amount) + g * amount;
+                            data[i + 2] = data[i + 2] * (1 - amount) + b * amount;
+                        }
+                    }
+                };
+
+                const handleImageFile = (file) => {
+                    if (!file || !file.type.startsWith("image/")) return;
+                    try {
+                    currentFileName = file.name.replace(
+                        /(\.[\w\d_-]+)$/i,
+                        "_filtered$1",
+                    );
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        originalImage.src = e.target.result;
+                    };
+                    reader.onerror = () => {
+                        alert('画像ファイルの読み込みに失敗しました。');
+                    };
+                    reader.readAsDataURL(file);
+                    originalImage.onload = () => {
+                        imageLoaded = true;
+                        processingCanvas.width = originalImage.naturalWidth;
+                        processingCanvas.height = originalImage.naturalHeight;
+                        placeholderContent.classList.add("hidden");
+                        previewContainer.classList.remove("hidden");
+                        applyFiltersImmediate();
+                    };
+                    originalImage.onerror = () => {
+                        alert('画像の読み込みに失敗しました。サポートされていない形式の可能性があります。');
+                    };
+                    } catch (error) {
+                        console.error('画像処理中にエラーが発生しました:', error);
+                        alert('画像の読み込み中にエラーが発生しました。');
+                    }
+                };
+
+                ["dragenter", "dragover", "dragleave", "drop"].forEach(
+                    (eventName) => {
+                        imageDropZone.addEventListener(eventName, (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        });
+                    },
+                );
+                ["dragenter", "dragover"].forEach((eventName) => {
+                    imageDropZone.addEventListener(eventName, () =>
+                        imageDropZone.classList.add("dragover"),
+                    );
+                });
+                ["dragleave", "drop"].forEach((eventName) => {
+                    imageDropZone.addEventListener(eventName, () =>
+                        imageDropZone.classList.remove("dragover"),
+                    );
+                });
+                imageDropZone.addEventListener("drop", (e) => {
+                    handleImageFile(e.dataTransfer.files[0]);
+                });
+                fileInput.addEventListener("change", (e) =>
+                    handleImageFile(e.target.files[0]),
+                );
+
+                uploadBtn.addEventListener("click", () => fileInput.click());
+
+                batchUploadBtn.addEventListener("click", () => batchFileInput.click());
+
+                batchFileInput.addEventListener("change", async (e) => {
+                    if (isBatchProcessing) {
+                        alert('現在処理中です。完了までお待ちください。');
+                        e.target.value = '';
+                        return;
+                    }
+
+                    const files = Array.from(e.target.files).filter(f => f.type.startsWith('image/'));
+                    if (files.length === 0) return;
+
+                    // Warning for large batches
+                    if (files.length > 50) {
+                        if (!confirm(`⚠️ 警告: ${files.length}個の画像を処理しようとしています。\n\n大量の画像処理は時間がかかり、ブラウザが応答しなくなる可能性があります。\n\n続行しますか？`)) {
+                            e.target.value = '';
+                            return;
+                        }
+                    }
+
+                    if (!confirm(`${files.length}個の画像に現在のフィルターを適用してダウンロードしますか？`)) {
+                        e.target.value = '';
+                        return;
+                    }
+
+                    try {
+                    console.log('=== バッチ処理開始 ===');
+                    console.log('ファイル数:', files.length);
+                    console.log('isBatchProcessing:', isBatchProcessing);
+
+                    isBatchProcessing = true;
+                    // Show progress modal
+                    progressModal.classList.remove('hidden');
+                    progressBar.style.width = '0%';
+                    progressText.textContent = `0 / ${files.length}`;
+
+                    // Create ZIP instance
+                    const zip = new JSZip();
+                    console.log('JSZipインスタンス作成完了');
+
+                    for (let i = 0; i < files.length; i++) {
+                        const file = files[i];
+
+                        await new Promise((resolve, reject) => {
+                            const img = new Image();
+                            const reader = new FileReader();
+
+                            // Timeout to prevent hanging
+                            const timeout = setTimeout(() => {
+                                console.error(`タイムアウト: ${file.name}`);
+                                reject(new Error(`Processing timeout for ${file.name}`));
+                            }, 30000); // 30 seconds per image
+
+                            const cleanup = () => {
+                                clearTimeout(timeout);
+                            };
+
+                            reader.onerror = () => {
+                                cleanup();
+                                console.error(`ファイル読み込みエラー: ${file.name}`);
+                                resolve(); // Continue processing other files
+                            };
+
+                            reader.onload = (ev) => {
+                                img.onerror = () => {
+                                    cleanup();
+                                    console.error(`画像読み込みエラー: ${file.name}`);
+                                    resolve(); // Continue processing other files
+                                };
+
+                                img.onload = () => {
+                                    try {
+                                        const canvas = document.createElement('canvas');
+                                        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                                        canvas.width = img.naturalWidth;
+                                        canvas.height = img.naturalHeight;
+
+                                        // CSS filters (excluding custom filters)
+                                        const cssFilterString = filters
+                                            .filter(f => f.enabled && !CUSTOM_FILTER_TYPES.includes(f.type))
+                                            .map(f => {
+                                                let filterValue = `${f.value}${f.unit}`;
+                                                // Handle blur direction
+                                                if (f.type === 'blur' && f.params?.[0]?.value) {
+                                                    const direction = f.params[0].value;
+                                                    if (direction === 'horizontal') {
+                                                        filterValue = `${f.value}px 0`;
+                                                    } else if (direction === 'vertical') {
+                                                        filterValue = `0 ${f.value}px`;
+                                                    }
+                                                }
+                                                return `${f.type}(${filterValue})`;
+                                            })
+                                            .join(' ');
+
+                                        ctx.filter = cssFilterString.trim();
+                                        ctx.drawImage(img, 0, 0);
+
+                                        const customFilters = filters.filter(f =>
+                                            f.enabled && CUSTOM_FILTER_TYPES.includes(f.type)
+                                        );
+
+                                        const perPixelFilters = customFilters.filter(f => f.type !== "pixelate");
+                                        const pixelateFilter = customFilters.find(f => f.type === "pixelate");
+
+                                        if (perPixelFilters.length > 0) {
+                                            ctx.filter = 'none';
+                                            let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                            perPixelFilters.forEach(filter => {
+                                                applyCustomFilterToImageData(imageData, filter, canvas.width, canvas.height);
+                                            });
+                                            ctx.putImageData(imageData, 0, 0);
+                                        }
+
+                                        // Apply pixelate filter last
+                                        if (pixelateFilter) {
+                                            const size = Math.max(1, pixelateFilter.value);
+                                            const w = canvas.width;
+                                            const h = canvas.height;
+                                            const tempCanvas = document.createElement("canvas");
+                                            const tempCtx = tempCanvas.getContext("2d");
+                                            const downscaleW = Math.ceil(w / size);
+                                            const downscaleH = Math.ceil(h / size);
+                                            tempCanvas.width = downscaleW;
+                                            tempCanvas.height = downscaleH;
+                                            tempCtx.drawImage(canvas, 0, 0, w, h, 0, 0, downscaleW, downscaleH);
+                                            ctx.imageSmoothingEnabled = false;
+                                            ctx.clearRect(0, 0, w, h);
+                                            ctx.drawImage(tempCanvas, 0, 0, downscaleW, downscaleH, 0, 0, w, h);
+                                            ctx.imageSmoothingEnabled = true;
+                                            // Free temp canvas memory
+                                            tempCanvas.width = 0;
+                                            tempCanvas.height = 0;
+                                        }
+
+                                        // Convert canvas to blob and add to ZIP
+                                        canvas.toBlob((blob) => {
+                                            if (blob) {
+                                                const fileName = file.name.replace(/(\.\w+)$/, '_filtered.png');
+                                                zip.file(fileName, blob);
+                                            } else {
+                                                console.error(`Blob生成失敗: ${file.name}`);
+                                            }
+
+                                            // Update progress
+                                            const progress = ((i + 1) / files.length) * 100;
+                                            progressBar.style.width = `${progress}%`;
+                                            progressText.textContent = `${i + 1} / ${files.length}`;
+
+                                            // Clear canvas to free memory
+                                            canvas.width = 0;
+                                            canvas.height = 0;
+
+                                            cleanup();
+                                            resolve();
+                                        }, 'image/png');
+                                    } catch (error) {
+                                        cleanup();
+                                        console.error(`画像処理エラー: ${file.name}`, error);
+                                        resolve(); // Continue processing other files
+                                    }
+                                };
+                                img.src = ev.target.result;
+                            };
+                            reader.readAsDataURL(file);
+                        }).catch(err => {
+                            console.error(`処理エラー: ${file.name}`, err);
+                            // Continue with next file even if this one fails
+                        });
+                    }
+
+                    // Generate and download ZIP file
+                    progressText.textContent = 'ZIPファイルを生成中...';
+                    console.log('ZIP生成開始...');
+
+                    const zipBlob = await zip.generateAsync({
+                        type: 'blob',
+                        compression: "DEFLATE",
+                        compressionOptions: { level: 6 }
+                    });
+
+                    console.log('ZIP生成完了:', zipBlob.size, 'bytes');
+
+                    const link = document.createElement('a');
+                    const fileName = `filtered_images_${Date.now()}.zip`;
+                    link.download = fileName;
+                    link.href = URL.createObjectURL(zipBlob);
+                    link.style.display = 'none';
+
+                    // Add to DOM, click, then remove
+                    document.body.appendChild(link);
+                    console.log('ダウンロード開始:', fileName);
+                    link.click();
+
+                    // Cleanup after download starts
+                    setTimeout(() => {
+                        try {
+                            if (link.parentNode) {
+                                document.body.removeChild(link);
+                            }
+                            URL.revokeObjectURL(link.href);
+                            console.log('クリーンアップ完了');
+                        } catch (err) {
+                            console.error('クリーンアップエラー:', err);
+                        }
+                    }, 2000);
+
+                    // Hide progress modal and reset state
+                    setTimeout(() => {
+                        progressModal.classList.add('hidden');
+                        isBatchProcessing = false;
+                        e.target.value = '';
+                        console.log('処理完了: フラグリセット');
+                    }, 500);
+
+                    console.log('処理完了:', files.length, '個の画像');
+                    alert(`${files.length}個の画像を処理してZIPファイルでダウンロードしました！`);
+                    } catch (error) {
+                        console.error('バッチ処理中にエラーが発生しました:', error);
+                        progressModal.classList.add('hidden');
+                        alert(`バッチ処理中にエラーが発生しました: ${error.message}\n\nコンソールログを確認してください。`);
+                        isBatchProcessing = false;
+                        e.target.value = '';
+                    }
+                });
+
+                saveBtn.addEventListener("click", () => {
+                    if (!imageLoaded) return;
+                    const link = document.createElement("a");
+                    link.download = currentFileName;
+                    link.href = processingCanvas.toDataURL("image/png");
+                    link.click();
+                });
+
+                // Compress menu toggle
+                compressBtn.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    compressMenu.classList.toggle("hidden");
+                });
+
+                // Close compress menu when clicking outside
+                document.addEventListener("click", () => {
+                    compressMenu.classList.add("hidden");
+                });
+
+                // Compress options
+                document.querySelectorAll(".compress-option").forEach(btn => {
+                    btn.addEventListener("click", (e) => {
+                        e.stopPropagation();
+                        if (!imageLoaded) return;
+
+                        const format = e.target.dataset.format;
+                        let quality = 0.8;
+                        let mimeType = "image/png";
+                        let extension = "png";
+
+                        if (format === "jpeg") {
+                            const qualityInput = prompt("JPEG品質を入力してください (1-100):", "80");
+                            if (qualityInput === null) return;
+                            quality = Math.max(1, Math.min(100, parseInt(qualityInput) || 80)) / 100;
+                            mimeType = "image/jpeg";
+                            extension = "jpg";
+                        } else if (format === "png") {
+                            // PNG compression via canvas (lossless)
+                            mimeType = "image/png";
+                            extension = "png";
+                            quality = 1.0; // PNG doesn't use quality parameter but we keep it for consistency
+                        }
+
+                        const link = document.createElement("a");
+                        const fileName = currentFileName.replace(/\.[^.]+$/, `_compressed.${extension}`);
+                        link.download = fileName;
+                        link.href = processingCanvas.toDataURL(mimeType, quality);
+                        link.click();
+
+                        compressMenu.classList.add("hidden");
+                    });
+                });
+
+                // Resize button
+                resizeBtn.addEventListener("click", () => {
+                    if (!imageLoaded) return;
+
+                    const currentWidth = originalImage.naturalWidth;
+                    const currentHeight = originalImage.naturalHeight;
+                    const aspectRatio = currentWidth / currentHeight;
+
+                    const input = prompt(`現在のサイズ: ${currentWidth}x${currentHeight}\n\n新しい幅を入力してください（高さは自動調整されます）:`, currentWidth);
+                    if (input === null) return;
+
+                    const newWidth = parseInt(input);
+                    if (isNaN(newWidth) || newWidth <= 0) {
+                        alert('無効な値です');
+                        return;
+                    }
+
+                    const newHeight = Math.round(newWidth / aspectRatio);
+
+                    // Create temporary canvas for resizing
+                    const resizeCanvas = document.createElement('canvas');
+                    const resizeCtx = resizeCanvas.getContext('2d');
+                    resizeCanvas.width = newWidth;
+                    resizeCanvas.height = newHeight;
+
+                    // Draw resized image
+                    resizeCtx.drawImage(originalImage, 0, 0, newWidth, newHeight);
+
+                    // Update original image
+                    originalImage.src = resizeCanvas.toDataURL('image/png');
+                    originalImage.onload = () => {
+                        processingCanvas.width = newWidth;
+                        processingCanvas.height = newHeight;
+                        applyFiltersImmediate();
+                        alert(`リサイズ完了: ${newWidth}x${newHeight}`);
+                    };
+                });
+
+                resetBtn.addEventListener("click", () => {
+                    filters = [];
+                    renderFilterList();
+                    applyFiltersImmediate();
+                });
+
+                const applyFilters = () => {
+                    if (!imageLoaded) return;
+
+                    // Debounce for slider changes
+                    if (renderTimeout) {
+                        clearTimeout(renderTimeout);
+                    }
+
+                    renderTimeout = setTimeout(() => {
+                        applyFiltersImmediate();
+                    }, 50);
+                };
+
+                const applyFiltersImmediate = () => {
+                    if (!imageLoaded) return;
+                    try {
+                    const ctx = processingCanvas.getContext("2d", {
+                        willReadFrequently: true,
+                    });
+                    ctx.clearRect(
+                        0,
+                        0,
+                        processingCanvas.width,
+                        processingCanvas.height,
+                    );
+
+                    // Separate filters
+                    let cssFilterString = "";
+                    const customFilters = filters.filter(
+                        (f) => f.enabled && CUSTOM_FILTER_TYPES.includes(f.type),
+                    );
+                    const cssFilters = filters.filter(
+                        (f) => f.enabled && !CUSTOM_FILTER_TYPES.includes(f.type),
+                    );
+
+                    cssFilters.forEach((filter) => {
+                        let filterValue = `${filter.value}${filter.unit}`;
+
+                        // Handle blur direction
+                        if (filter.type === 'blur' && filter.params?.[0]?.value) {
+                            const direction = filter.params[0].value;
+                            if (direction === 'horizontal') {
+                                filterValue = `${filter.value}px 0`;
+                            } else if (direction === 'vertical') {
+                                filterValue = `0 ${filter.value}px`;
+                            }
+                        }
+
+                        cssFilterString += `${filter.type}(${filterValue}) `;
+                    });
+
+                    // 1. Apply CSS filters (fastest)
+                    ctx.filter = cssFilterString.trim();
+                    ctx.drawImage(originalImage, 0, 0);
+
+                    const perPixelFilters = customFilters.filter(
+                        (f) => f.type !== "pixelate",
+                    );
+                    const pixelateFilter = customFilters.find(
+                        (f) => f.type === "pixelate",
+                    );
+
+                    // 2. Apply per-pixel custom filters
+                    if (perPixelFilters.length > 0) {
+                        ctx.filter = "none"; // Clear CSS filter before getting data
+                        let imageData = ctx.getImageData(
+                            0,
+                            0,
+                            processingCanvas.width,
+                            processingCanvas.height,
+                        );
+                        const w = imageData.width;
+                        const h = imageData.height;
+
+                        perPixelFilters.forEach((filter) => {
+                            applyCustomFilterToImageData(imageData, filter, w, h);
+                        });
+                        ctx.putImageData(imageData, 0, 0);
+                    }
+
+                    // 3. Apply pixelate filter last (most expensive)
+                    if (pixelateFilter) {
+                        const size = Math.max(1, pixelateFilter.value);
+                        const w = processingCanvas.width;
+                        const h = processingCanvas.height;
+
+                        const tempCanvas = document.createElement("canvas");
+                        const tempCtx = tempCanvas.getContext("2d");
+                        const downscaleW = Math.ceil(w / size);
+                        const downscaleH = Math.ceil(h / size);
+                        tempCanvas.width = downscaleW;
+                        tempCanvas.height = downscaleH;
+
+                        tempCtx.drawImage(
+                            processingCanvas,
+                            0,
+                            0,
+                            w,
+                            h,
+                            0,
+                            0,
+                            downscaleW,
+                            downscaleH,
+                        );
+
+                        ctx.imageSmoothingEnabled = false;
+                        ctx.clearRect(0, 0, w, h);
+                        ctx.drawImage(
+                            tempCanvas,
+                            0,
+                            0,
+                            downscaleW,
+                            downscaleH,
+                            0,
+                            0,
+                            w,
+                            h,
+                        );
+                        ctx.imageSmoothingEnabled = true;
+                    }
+
+                    // 4. Update preview image
+                    previewImage.src = processingCanvas.toDataURL("image/png");
+                    } catch (error) {
+                        console.error('フィルター適用中にエラーが発生しました:', error);
+                        alert('フィルター適用中にエラーが発生しました。画像またはフィルター設定を確認してください。');
+                    }
+                };
+
+                const renderFilterList = () => {
+                    filterListEl.innerHTML = "";
+                    noFiltersMsg.classList.toggle("hidden", filters.length > 0);
+
+                    filters.forEach((filter, index) => {
+                        const item = document.createElement("div");
+                        item.className = "filter-item";
+                        item.dataset.index = index;
+                        const unitDisplay =
+                            filter.unitLabel || filter.unit || "";
+
+                        let controlsHTML = '';
+
+                        // Main value control
+                        controlsHTML += `
+                            <div class="flex items-center gap-2">
+                                <input type="range" min="${filter.min}" max="${filter.max}" step="${filter.step || 1}" value="${filter.value}" class="w-full slider" data-index="${index}" data-param="value">
+                                <span class="text-xs w-12 text-right">${filter.value}${unitDisplay}</span>
+                            </div>
+                        `;
+
+                        // Additional parameters
+                        if (filter.params) {
+                            filter.params.forEach((param, paramIndex) => {
+                                if (param.type === 'range') {
+                                    const paramUnit = param.unitLabel || param.unit || "";
+                                    controlsHTML += `
+                                        <div class="flex items-center gap-2 mt-2">
+                                            <label class="text-xs text-slate-600 w-20">${param.label}</label>
+                                            <input type="range" min="${param.min}" max="${param.max}" step="${param.step || 1}" value="${param.value}" class="flex-1 slider" data-index="${index}" data-param="${param.key}">
+                                            <span class="text-xs w-12 text-right">${param.value}${paramUnit}</span>
+                                        </div>
+                                    `;
+                                } else if (param.type === 'color') {
+                                    controlsHTML += `
+                                        <div class="flex items-center gap-2 mt-2">
+                                            <label class="text-xs text-slate-600 w-20">${param.label}</label>
+                                            <input type="color" value="${param.value}" class="flex-1 h-8 rounded" data-index="${index}" data-param="${param.key}">
+                                        </div>
+                                    `;
+                                } else if (param.type === 'select') {
+                                    const optionsHTML = param.options.map(opt =>
+                                        `<option value="${opt.value}" ${opt.value === param.value ? 'selected' : ''}>${opt.label}</option>`
+                                    ).join('');
+                                    controlsHTML += `
+                                        <div class="flex items-center gap-2 mt-2">
+                                            <label class="text-xs text-slate-600 w-20">${param.label}</label>
+                                            <select class="flex-1 text-xs p-1 rounded border border-slate-300" data-index="${index}" data-param="${param.key}">
+                                                ${optionsHTML}
+                                            </select>
+                                        </div>
+                                    `;
+                                }
+                            });
+                        }
+
+                        item.innerHTML = `
+                    <div class="flex items-center gap-2">
+                        <span class="handle">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                        </span>
+                        <span class="flex-grow text-sm font-medium capitalize">${filter.label}</span>
+                        <button class="toggle-visibility-btn p-1" data-index="${index}">
+                            ${
+                                filter.enabled
+                                    ? '<svg class="w-5 h-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>'
+                                    : '<svg class="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7 1.274-4.057 5.064-7 9.542-7 .847 0 1.67.127 2.454.364m-6.024 4.458a3 3 0 114.242 4.242l-4.242-4.242z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3l18 18"></path></svg>'
+                            }
+                        </button>
+                        <button class="remove-filter-btn p-1 text-red-500 hover:text-red-700" data-index="${index}">
+                           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" class="bi bi-trash" viewBox="0 0 16 16"><path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/><path fill-rule="evenodd" d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3V2h11v1h-11z"/></svg>
+                        </button>
+                    </div>
+                    <div>
+                        ${controlsHTML}
+                    </div>
+                `;
+                        filterListEl.appendChild(item);
+                    });
+                };
+
+                const addFilter = (type) => {
+                    const filterPresets = {
+                        brightness: {
+                            label: "明度",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        contrast: {
+                            label: "コントラスト",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        saturate: {
+                            label: "彩度",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        exposure: {
+                            label: "露出",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        opacity: {
+                            label: "不透明度",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        grayscale: {
+                            label: "グレースケール",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        sepia: {
+                            label: "セピア",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        invert: {
+                            label: "階調の反転",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        blur: {
+                            label: "ぼかし",
+                            min: 0,
+                            max: 20,
+                            value: 5,
+                            unit: "px",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "direction",
+                                    label: "方向",
+                                    type: "select",
+                                    value: "all",
+                                    options: [
+                                        { value: "all", label: "全体" },
+                                        { value: "horizontal", label: "横方向" },
+                                        { value: "vertical", label: "縦方向" }
+                                    ]
+                                }
+                            ]
+                        },
+                        "hue-rotate": {
+                            label: "色相回転",
+                            min: 0,
+                            max: 360,
+                            value: 180,
+                            unit: "deg",
+                            enabled: true,
+                        },
+                        red: {
+                            label: "赤チャンネル",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        green: {
+                            label: "緑チャンネル",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        blue: {
+                            label: "青チャンネル",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        noise: {
+                            label: "ノイズ",
+                            min: 0,
+                            max: 100,
+                            value: 20,
+                            unit: "",
+                            enabled: true,
+                        },
+                        vignette: {
+                            label: "ビネット",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "shape",
+                                    label: "形状",
+                                    type: "select",
+                                    value: "circle",
+                                    options: [
+                                        { value: "circle", label: "円形" },
+                                        { value: "square", label: "四角形" }
+                                    ]
+                                }
+                            ]
+                        },
+                        threshold: {
+                            label: "二値化",
+                            min: 0,
+                            max: 255,
+                            value: 128,
+                            unit: "",
+                            enabled: true,
+                        },
+                        pixelate: {
+                            label: "ピクセル化",
+                            min: 1,
+                            max: 50,
+                            value: 10,
+                            unit: "px",
+                            enabled: true,
+                        },
+                        posterize: {
+                            label: "ポスタライズ",
+                            min: 2,
+                            max: 32,
+                            value: 8,
+                            unit: "",
+                            unitLabel: " 段階",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "baseColors",
+                                    label: "基準色",
+                                    type: "select",
+                                    value: "none",
+                                    options: [
+                                        { value: "none", label: "なし" },
+                                        { value: "red", label: "赤系" },
+                                        { value: "green", label: "緑系" },
+                                        { value: "blue", label: "青系" },
+                                        { value: "warm", label: "暖色系" },
+                                        { value: "cool", label: "寒色系" },
+                                        { value: "custom", label: "カスタム" }
+                                    ]
+                                },
+                                {
+                                    key: "customColor",
+                                    label: "カスタム色",
+                                    type: "color",
+                                    value: "#ff0000"
+                                }
+                            ]
+                        },
+                        sharpen: {
+                            label: "シャープ",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        emboss: {
+                            label: "エンボス",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        solarize: {
+                            label: "ソラリゼーション",
+                            min: 0,
+                            max: 255,
+                            value: 128,
+                            unit: "",
+                            enabled: true,
+                        },
+                        temperature: {
+                            label: "色温度",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "",
+                            enabled: true,
+                        },
+                        vibrance: {
+                            label: "自然な彩度",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        gamma: {
+                            label: "ガンマ",
+                            min: 10,
+                            max: 300,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        colorize: {
+                            label: "着色",
+                            min: 0,
+                            max: 360,
+                            value: 180,
+                            unit: "°",
+                            enabled: true,
+                        },
+                        duotone: {
+                            label: "2階調",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "shadowColor",
+                                    label: "シャドウ色",
+                                    type: "color",
+                                    value: "#1a1a4d"
+                                },
+                                {
+                                    key: "highlightColor",
+                                    label: "ハイライト色",
+                                    type: "color",
+                                    value: "#ff6b9d"
+                                }
+                            ]
+                        },
+                        tonecurve: {
+                            label: "トーンカーブ",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "curveType",
+                                    label: "カーブ種類",
+                                    type: "select",
+                                    value: "s",
+                                    options: [
+                                        { value: "s", label: "Sカーブ (コントラスト↑)" },
+                                        { value: "inverse-s", label: "逆Sカーブ (コントラスト↓)" },
+                                        { value: "brighten", label: "明るく" },
+                                        { value: "darken", label: "暗く" }
+                                    ]
+                                }
+                            ]
+                        },
+                        edge: {
+                            label: "輪郭線抽出",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "edgeMode",
+                                    label: "モード",
+                                    type: "select",
+                                    value: "normal",
+                                    options: [
+                                        { value: "normal", label: "通常" },
+                                        { value: "invert", label: "反転" }
+                                    ]
+                                }
+                            ]
+                        },
+                        bloom: {
+                            label: "ブルーム",
+                            min: 0,
+                            max: 255,
+                            value: 200,
+                            unit: "",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "intensity",
+                                    label: "強度",
+                                    type: "range",
+                                    min: 0,
+                                    max: 200,
+                                    value: 100,
+                                    unit: "%"
+                                }
+                            ]
+                        },
+                    };
+                    filters.push({ type, ...filterPresets[type] });
+                    renderFilterList();
+                    applyFiltersImmediate();
+                };
+
+                // Tab switching logic
+                filterTabsContainer.addEventListener("click", (e) => {
+                    const button = e.target.closest("button");
+                    if (!button) return;
+
+                    filterTabsContainer
+                        .querySelectorAll(".tab-btn")
+                        .forEach((btn) => btn.classList.remove("active"));
+                    button.classList.add("active");
+
+                    tabPanels.forEach((panel) => panel.classList.add("hidden"));
+                    document
+                        .getElementById(`tab-content-${button.dataset.tab}`)
+                        .classList.remove("hidden");
+                });
+
+                // Preset configurations
+                const presets = {
+                    sunset: [
+                        { type: 'temperature', value: 80 },
+                        { type: 'saturate', value: 140 },
+                        { type: 'brightness', value: 110 },
+                        { type: 'contrast', value: 115 },
+                    ],
+                    night: [
+                        { type: 'brightness', value: 70 },
+                        { type: 'contrast', value: 130 },
+                        { type: 'saturate', value: 80 },
+                        { type: 'temperature', value: 20 },
+                        { type: 'colorize', value: 240 },
+                    ],
+                    game: [
+                        { type: 'saturate', value: 180 },
+                        { type: 'contrast', value: 140 },
+                        { type: 'vibrance', value: 150 },
+                        { type: 'sharpen', value: 70 },
+                        { type: 'pixelate', value: 4 },
+                    ],
+                    warm: [
+                        { type: 'temperature', value: 85 },
+                        { type: 'saturate', value: 120 },
+                        { type: 'brightness', value: 105 },
+                    ],
+                    cool: [
+                        { type: 'temperature', value: 15 },
+                        { type: 'saturate', value: 120 },
+                        { type: 'brightness', value: 105 },
+                    ],
+                };
+
+                const applyPreset = (presetName) => {
+                    const preset = presets[presetName];
+                    if (!preset) return;
+
+                    // Clear existing filters
+                    filters = [];
+
+                    // Add preset filters
+                    preset.forEach(filterConfig => {
+                        const filterData = { ...filterConfig };
+                        const filterPreset = {
+                            brightness: { label: "明度", min: 0, max: 200, unit: "%", enabled: true },
+                            contrast: { label: "コントラスト", min: 0, max: 200, unit: "%", enabled: true },
+                            saturate: { label: "彩度", min: 0, max: 200, unit: "%", enabled: true },
+                            temperature: { label: "色温度", min: 0, max: 100, unit: "", enabled: true },
+                            colorize: { label: "着色", min: 0, max: 360, unit: "°", enabled: true },
+                            vibrance: { label: "自然な彩度", min: 0, max: 200, unit: "%", enabled: true },
+                            sharpen: { label: "シャープ", min: 0, max: 100, unit: "%", enabled: true },
+                            pixelate: { label: "ピクセル化", min: 1, max: 50, unit: "px", enabled: true },
+                        };
+
+                        const basePreset = filterPreset[filterData.type];
+                        if (basePreset) {
+                            filters.push({
+                                type: filterData.type,
+                                value: filterData.value,
+                                ...basePreset
+                            });
+                        }
+                    });
+
+                    renderFilterList();
+                    applyFiltersImmediate();
+                };
+
+                // Preset button clicks
+                document.querySelectorAll(".preset-btn").forEach((btn) => {
+                    btn.addEventListener("click", (e) => {
+                        const presetName = e.currentTarget.dataset.preset;
+                        if (presetName) {
+                            applyPreset(presetName);
+                        }
+                    });
+                });
+
+                // Add filter button clicks
+                document.querySelectorAll(".tab-panel").forEach((panel) => {
+                    panel.addEventListener("click", (e) => {
+                        const button = e.target.closest("button");
+                        if (button && button.dataset.filter) {
+                            addFilter(button.dataset.filter);
+                        }
+                    });
+                });
+
+                filterListEl.addEventListener("input", (e) => {
+                    const index = e.target.dataset.index;
+                    const param = e.target.dataset.param;
+
+                    if (e.target.classList.contains("slider")) {
+                        const value = e.target.value;
+
+                        if (param === "value") {
+                            filters[index].value = value;
+                            const unitDisplay = filters[index].unitLabel || filters[index].unit || "";
+                            e.target.nextElementSibling.textContent = `${value}${unitDisplay}`;
+                        } else {
+                            // Update parameter value
+                            const paramObj = filters[index].params?.find(p => p.key === param);
+                            if (paramObj) {
+                                paramObj.value = value;
+                                const unitDisplay = paramObj.unitLabel || paramObj.unit || "";
+                                e.target.nextElementSibling.textContent = `${value}${unitDisplay}`;
+                            }
+                        }
+                        applyFilters();
+                    } else if (e.target.type === "color") {
+                        const paramObj = filters[index].params?.find(p => p.key === param);
+                        if (paramObj) {
+                            paramObj.value = e.target.value;
+                        }
+                        applyFilters();
+                    }
+                });
+
+                filterListEl.addEventListener("click", (e) => {
+                    const removeBtn = e.target.closest(".remove-filter-btn");
+                    if (removeBtn) {
+                        filters.splice(removeBtn.dataset.index, 1);
+                        renderFilterList();
+                        applyFilters();
+                        return;
+                    }
+                    const visibilityBtn = e.target.closest(
+                        ".toggle-visibility-btn",
+                    );
+                    if (visibilityBtn) {
+                        const index = visibilityBtn.dataset.index;
+                        filters[index].enabled = !filters[index].enabled;
+                        renderFilterList();
+                        applyFilters();
+                    }
+                });
+
+                filterListEl.addEventListener("change", (e) => {
+                    if (e.target.tagName === "SELECT") {
+                        const index = e.target.dataset.index;
+                        const param = e.target.dataset.param;
+                        const paramObj = filters[index].params?.find(p => p.key === param);
+                        if (paramObj) {
+                            paramObj.value = e.target.value;
+                        }
+                        applyFilters();
+                    }
+                });
+
+                new Sortable(filterListEl, {
+                    animation: 150,
+                    handle: ".handle",
+                    ghostClass: "ghost",
+                    onEnd: (evt) => {
+                        const [movedItem] = filters.splice(evt.oldIndex, 1);
+                        filters.splice(evt.newIndex, 0, movedItem);
+                        renderFilterList();
+                        applyFilters();
+                    },
+                });
+
+                previewImage.addEventListener("dragstart", (e) => {
+                    if (imageLoaded) {
+                        e.dataTransfer.setData(
+                            "text/uri-list",
+                            previewImage.src,
+                        );
+                        e.dataTransfer.setData(
+                            "text/html",
+                            `<img src="${previewImage.src}">`,
+                        );
+                    }
+                });
+
+                // Keyboard shortcuts
+                document.addEventListener('keydown', (e) => {
+                    // Ctrl+S or Cmd+S: Save
+                    if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+                        e.preventDefault();
+                        if (imageLoaded) {
+                            saveBtn.click();
+                        }
+                    }
+                    // Ctrl+O or Cmd+O: Open
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+                        e.preventDefault();
+                        uploadBtn.click();
+                    }
+                    // Ctrl+R or Cmd+R: Reset (override browser refresh)
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'r') {
+                        e.preventDefault();
+                        if (confirm('すべてのフィルターをリセットしますか？')) {
+                            resetBtn.click();
+                        }
+                    }
+                    // Ctrl+I or Cmd+I: Resize
+                    if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+                        e.preventDefault();
+                        if (imageLoaded) {
+                            resizeBtn.click();
+                        }
+                    }
+                });
+
+                // Initialize view
+                renderFilterList();
+            });
+        </script>
+    </body>
+</html>
