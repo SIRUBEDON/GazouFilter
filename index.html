@@ -1338,9 +1338,16 @@
                     handleImageFile(e.target.files[0]),
                 );
 
-                uploadBtn.addEventListener("click", () => fileInput.click());
+                uploadBtn.addEventListener("click", () => {
+                    fileInput.value = "";
+                    fileInput.click();
+                });
 
-                batchUploadBtn.addEventListener("click", () => batchFileInput.click());
+                batchUploadBtn.addEventListener("click", () => {
+                    // Ensure selecting the same files triggers a change event every time
+                    batchFileInput.value = "";
+                    batchFileInput.click();
+                });
 
                 batchFileInput.addEventListener("change", async (e) => {
                     if (isBatchProcessing) {
@@ -2440,3 +2447,5 @@
         </script>
     </body>
 </html>
+
+                           
