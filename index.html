@@ -132,6 +132,18 @@
             </header>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <section class="lg:col-span-3 bg-white p-6 rounded-xl shadow-lg">
+                    <h2 class="text-xl font-bold text-slate-900 mb-3">更新履歴</h2>
+                    <ul class="space-y-2 text-sm text-slate-700">
+                        <li>
+                            <span class="font-semibold">2025/10/03</span> — フィルター追加（色収差・スキャンライン・霞）、方向性ぼかしの処理見直し、一括ダウンロード時の拡張子維持などを改善
+                        </li>
+                        <li>
+                            <span class="font-semibold">2025/10/01</span> — 公開
+                        </li>
+                    </ul>
+                </section>
+
                 <!-- Controls Column -->
                 <div
                     class="lg:col-span-1 bg-white p-6 rounded-xl shadow-lg h-fit space-y-6"
@@ -722,6 +734,52 @@
                                         ></path></svg
                                     ><span>ブルーム</span>
                                 </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="chromatic"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <circle cx="9" cy="12" r="4" stroke-width="1.8"></circle>
+                                        <circle cx="15" cy="10" r="4" stroke-width="1.8" opacity="0.7"></circle>
+                                        <circle cx="13" cy="15" r="4" stroke-width="1.8" opacity="0.4"></circle>
+                                    </svg><span>色収差</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="scanlines"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path d="M4 6h16M4 10h16M4 14h16M4 18h16" stroke-width="1.8" stroke-linecap="round"></path>
+                                    </svg><span>ｽｷｬﾝﾗｲﾝ</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="haze"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            d="M5 16h14M4 19h10M7 13a4 4 0 110-8 5.5 5.5 0 0110.7 1.5A3.5 3.5 0 0118.5 13H7z"
+                                            stroke-width="1.8"
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                        ></path>
+                                    </svg><span>霞</span>
+                                </button>
                             </div>
                         </div>
                     </div>
@@ -994,16 +1052,97 @@
 
                 let filters = [];
                 let imageLoaded = false;
-                let currentFileName = "filtered-image.png";
                 let renderTimeout = null;
                 let isBatchProcessing = false;
+
+                const EXPORT_FORMATS = {
+                    ".jpg": { ext: ".jpg", mime: "image/jpeg", quality: 0.92 },
+                    ".jpeg": { ext: ".jpg", mime: "image/jpeg", quality: 0.92 },
+                    ".png": { ext: ".png", mime: "image/png" },
+                    ".webp": { ext: ".webp", mime: "image/webp", quality: 0.92 }
+                };
+
+                const normalizeExtension = (ext = "") =>
+                    ext.startsWith(".") ? ext.toLowerCase() : `.${ext.toLowerCase()}`;
+
+                const pickExportFormat = (ext = "", mime = "") => {
+                    const normalizedExt = normalizeExtension(ext);
+                    if (EXPORT_FORMATS[normalizedExt]) {
+                        return EXPORT_FORMATS[normalizedExt];
+                    }
+                    const lowerMime = mime.toLowerCase();
+                    const match = Object.values(EXPORT_FORMATS).find(
+                        (format) => format.mime === lowerMime,
+                    );
+                    return match || EXPORT_FORMATS[".png"];
+                };
+
+                const splitFileName = (fileName = "") => {
+                    const match = fileName.match(/^(.*?)(\.[^.]+)?$/);
+                    return {
+                        base: match?.[1] ?? "image",
+                        ext: match?.[2] ?? "",
+                    };
+                };
+
+                const stripFilteredSuffix = (baseName = "") =>
+                    baseName.replace(/_filtered$/i, "") || "image";
+
+                const buildFilteredFileName = (baseName, extension) => {
+                    const sanitizedBase = stripFilteredSuffix(baseName);
+                    return `${sanitizedBase}_filtered${extension}`;
+                };
+
+                const updateCurrentFileMetadata = (fileName, mimeType = "") => {
+                    const { base, ext } = splitFileName(fileName);
+                    currentExportFormat = pickExportFormat(ext, mimeType);
+                    currentFileBaseName = stripFilteredSuffix(base);
+                    currentFileName = buildFilteredFileName(
+                        currentFileBaseName,
+                        currentExportFormat.ext,
+                    );
+                };
+
+                const resolveExportForFile = (file) => {
+                    const { base, ext } = splitFileName(file.name);
+                    const format = pickExportFormat(ext, file.type || "");
+                    const outputName = buildFilteredFileName(base, format.ext);
+                    return { format, outputName };
+                };
+
+                const parseHexColor = (hex, fallback = { r: 255, g: 255, b: 255 }) => {
+                    if (typeof hex !== "string") return fallback;
+                    const cleaned = hex.replace("#", "");
+                    if (cleaned.length === 3) {
+                        const r = parseInt(cleaned[0] + cleaned[0], 16);
+                        const g = parseInt(cleaned[1] + cleaned[1], 16);
+                        const b = parseInt(cleaned[2] + cleaned[2], 16);
+                        return { r, g, b };
+                    }
+                    if (cleaned.length === 6) {
+                        const r = parseInt(cleaned.slice(0, 2), 16);
+                        const g = parseInt(cleaned.slice(2, 4), 16);
+                        const b = parseInt(cleaned.slice(4, 6), 16);
+                        return { r, g, b };
+                    }
+                    return fallback;
+                };
+
+                const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+                let currentExportFormat = EXPORT_FORMATS[".png"];
+                let currentFileBaseName = "image";
+                let currentFileName = buildFilteredFileName(
+                    currentFileBaseName,
+                    currentExportFormat.ext,
+                );
 
                 // カスタムフィルタータイプのリスト（一元管理）
                 const CUSTOM_FILTER_TYPES = [
                     "threshold", "pixelate", "posterize", "red", "green", "blue",
                     "noise", "vignette", "solarize", "sharpen", "exposure", "emboss",
                     "temperature", "vibrance", "gamma", "colorize", "duotone",
-                    "tonecurve", "edge", "bloom"
+                    "tonecurve", "edge", "chromatic", "scanlines", "haze", "bloom"
                 ];
 
                 // 畳み込みフィルター適用関数（共通）
@@ -1034,6 +1173,54 @@
                             dstData[dstI] = originalData[dstI] * (1 - blend) + (r + offset) * blend;
                             dstData[dstI + 1] = originalData[dstI + 1] * (1 - blend) + (g + offset) * blend;
                             dstData[dstI + 2] = originalData[dstI + 2] * (1 - blend) + (b + offset) * blend;
+                        }
+                    }
+                };
+
+                const applyDirectionalBlurToImageData = (imageData, radius, direction) => {
+                    const size = Math.round(radius);
+                    if (size <= 0) return;
+
+                    const { data, width, height } = imageData;
+                    const original = new Uint8ClampedArray(data);
+
+                    if (direction === "vertical") {
+                        for (let y = 0; y < height; y++) {
+                            for (let x = 0; x < width; x++) {
+                                let r = 0, g = 0, b = 0;
+                                let count = 0;
+                                for (let dy = -size; dy <= size; dy++) {
+                                    const ny = clamp(y + dy, 0, height - 1);
+                                    const idx = (ny * width + x) * 4;
+                                    r += original[idx];
+                                    g += original[idx + 1];
+                                    b += original[idx + 2];
+                                    count++;
+                                }
+                                const dest = (y * width + x) * 4;
+                                data[dest] = r / count;
+                                data[dest + 1] = g / count;
+                                data[dest + 2] = b / count;
+                            }
+                        }
+                    } else {
+                        for (let y = 0; y < height; y++) {
+                            for (let x = 0; x < width; x++) {
+                                let r = 0, g = 0, b = 0;
+                                let count = 0;
+                                for (let dx = -size; dx <= size; dx++) {
+                                    const nx = clamp(x + dx, 0, width - 1);
+                                    const idx = (y * width + nx) * 4;
+                                    r += original[idx];
+                                    g += original[idx + 1];
+                                    b += original[idx + 2];
+                                    count++;
+                                }
+                                const dest = (y * width + x) * 4;
+                                data[dest] = r / count;
+                                data[dest + 1] = g / count;
+                                data[dest + 2] = b / count;
+                            }
                         }
                     }
                 };
@@ -1278,16 +1465,92 @@
                             data[i + 1] = data[i + 1] * (1 - amount) + g * amount;
                             data[i + 2] = data[i + 2] * (1 - amount) + b * amount;
                         }
+                    } else if (filter.type === 'chromatic') {
+                        const amount = clamp(Math.round(filter.value), 0, 50);
+                        if (amount === 0) return;
+                        const direction = filter.params?.[0]?.value || 'horizontal';
+                        const original = new Uint8ClampedArray(data);
+
+                        const offsets = {
+                            horizontal: { dx: amount, dy: 0 },
+                            vertical: { dx: 0, dy: amount },
+                            diagonal: { dx: amount, dy: amount }
+                        };
+
+                        const { dx, dy } = offsets[direction] || offsets.horizontal;
+
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                const idx = (y * w + x) * 4;
+                                const redX = clamp(x - dx, 0, w - 1);
+                                const redY = clamp(y - dy, 0, h - 1);
+                                const blueX = clamp(x + dx, 0, w - 1);
+                                const blueY = clamp(y + dy, 0, h - 1);
+                                const redIdx = (redY * w + redX) * 4;
+                                const blueIdx = (blueY * w + blueX) * 4;
+
+                                data[idx] = original[redIdx];
+                                data[idx + 1] = original[idx + 1];
+                                data[idx + 2] = original[blueIdx + 2];
+                            }
+                        }
+                    } else if (filter.type === 'scanlines') {
+                        const intensity = clamp(filter.value / 100, 0, 1);
+                        if (intensity === 0) return;
+                        const spacing = clamp(
+                            parseInt(filter.params?.[0]?.value ?? 4, 10) || 4,
+                            2,
+                            50,
+                        );
+                        const thickness = clamp(
+                            parseInt(filter.params?.[1]?.value ?? 1, 10) || 1,
+                            1,
+                            spacing,
+                        );
+
+                        for (let y = 0; y < h; y++) {
+                            const isDarkBand = (y % spacing) < thickness;
+                            for (let x = 0; x < w; x++) {
+                                const idx = (y * w + x) * 4;
+                                if (isDarkBand) {
+                                    data[idx] *= 1 - intensity;
+                                    data[idx + 1] *= 1 - intensity;
+                                    data[idx + 2] *= 1 - intensity;
+                                } else {
+                                    const lift = intensity * 0.4;
+                                    data[idx] = clamp(data[idx] + (255 - data[idx]) * lift, 0, 255);
+                                    data[idx + 1] = clamp(data[idx + 1] + (255 - data[idx + 1]) * lift, 0, 255);
+                                    data[idx + 2] = clamp(data[idx + 2] + (255 - data[idx + 2]) * lift, 0, 255);
+                                }
+                            }
+                        }
+                    } else if (filter.type === 'haze') {
+                        const amount = clamp(filter.value / 100, 0, 1);
+                        if (amount === 0) return;
+                        const tintHex = filter.params?.[0]?.value || '#ffffff';
+                        const tint = parseHexColor(tintHex, { r: 255, g: 255, b: 255 });
+                        const contrastFactor = 1 - amount * 0.6;
+
+                        for (let i = 0; i < data.length; i += 4) {
+                            const r = data[i];
+                            const g = data[i + 1];
+                            const b = data[i + 2];
+
+                            const tintedR = r * (1 - amount) + tint.r * amount;
+                            const tintedG = g * (1 - amount) + tint.g * amount;
+                            const tintedB = b * (1 - amount) + tint.b * amount;
+
+                            data[i] = clamp(128 + (tintedR - 128) * contrastFactor, 0, 255);
+                            data[i + 1] = clamp(128 + (tintedG - 128) * contrastFactor, 0, 255);
+                            data[i + 2] = clamp(128 + (tintedB - 128) * contrastFactor, 0, 255);
+                        }
                     }
                 };
 
                 const handleImageFile = (file) => {
                     if (!file || !file.type.startsWith("image/")) return;
                     try {
-                    currentFileName = file.name.replace(
-                        /(\.[\w\d_-]+)$/i,
-                        "_filtered$1",
-                    );
+                    updateCurrentFileMetadata(file.name, file.type);
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         originalImage.src = e.target.result;
@@ -1424,30 +1687,42 @@
                                         canvas.width = img.naturalWidth;
                                         canvas.height = img.naturalHeight;
 
-                                        // CSS filters (excluding custom filters)
-                                        const cssFilterString = filters
-                                            .filter(f => f.enabled && !CUSTOM_FILTER_TYPES.includes(f.type))
-                                            .map(f => {
-                                                let filterValue = `${f.value}${f.unit}`;
-                                                // Handle blur direction
-                                                if (f.type === 'blur' && f.params?.[0]?.value) {
-                                                    const direction = f.params[0].value;
-                                                    if (direction === 'horizontal') {
-                                                        filterValue = `${f.value}px 0`;
-                                                    } else if (direction === 'vertical') {
-                                                        filterValue = `0 ${f.value}px`;
-                                                    }
-                                                }
-                                                return `${f.type}(${filterValue})`;
-                                            })
+                                        const activeFilters = filters.filter(f => f.enabled);
+                                        const customFilters = [];
+                                        const cssFilters = [];
+                                        const directionalBlurFilters = [];
+
+                                        activeFilters.forEach((f) => {
+                                            if (CUSTOM_FILTER_TYPES.includes(f.type)) {
+                                                customFilters.push(f);
+                                            } else if (
+                                                f.type === 'blur' &&
+                                                f.params?.[0]?.value &&
+                                                f.params[0].value !== 'all'
+                                            ) {
+                                                directionalBlurFilters.push(f);
+                                            } else {
+                                                cssFilters.push(f);
+                                            }
+                                        });
+
+                                        const cssFilterString = cssFilters
+                                            .map(f => `${f.type}(${f.value}${f.unit})`)
                                             .join(' ');
 
                                         ctx.filter = cssFilterString.trim();
                                         ctx.drawImage(img, 0, 0);
 
-                                        const customFilters = filters.filter(f =>
-                                            f.enabled && CUSTOM_FILTER_TYPES.includes(f.type)
-                                        );
+                                        if (directionalBlurFilters.length > 0) {
+                                            ctx.filter = 'none';
+                                            let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                            directionalBlurFilters.forEach((filter) => {
+                                                const direction = filter.params?.[0]?.value || 'all';
+                                                if (direction === 'all') return;
+                                                applyDirectionalBlurToImageData(imageData, filter.value, direction);
+                                            });
+                                            ctx.putImageData(imageData, 0, 0);
+                                        }
 
                                         const perPixelFilters = customFilters.filter(f => f.type !== "pixelate");
                                         const pixelateFilter = customFilters.find(f => f.type === "pixelate");
@@ -1482,11 +1757,12 @@
                                             tempCanvas.height = 0;
                                         }
 
+                                        const { format, outputName } = resolveExportForFile(file);
+
                                         // Convert canvas to blob and add to ZIP
                                         canvas.toBlob((blob) => {
                                             if (blob) {
-                                                const fileName = file.name.replace(/(\.\w+)$/, '_filtered.png');
-                                                zip.file(fileName, blob);
+                                                zip.file(outputName, blob);
                                             } else {
                                                 console.error(`Blob生成失敗: ${file.name}`);
                                             }
@@ -1502,7 +1778,7 @@
 
                                             cleanup();
                                             resolve();
-                                        }, 'image/png');
+                                        }, format.mime, format.quality);
                                     } catch (error) {
                                         cleanup();
                                         console.error(`画像処理エラー: ${file.name}`, error);
@@ -1575,10 +1851,28 @@
 
                 saveBtn.addEventListener("click", () => {
                     if (!imageLoaded) return;
-                    const link = document.createElement("a");
-                    link.download = currentFileName;
-                    link.href = processingCanvas.toDataURL("image/png");
-                    link.click();
+                    const { mime, quality } = currentExportFormat;
+                    processingCanvas.toBlob((blob) => {
+                        if (blob) {
+                            const link = document.createElement("a");
+                            link.download = currentFileName;
+                            link.href = URL.createObjectURL(blob);
+                            document.body.appendChild(link);
+                            link.click();
+                            setTimeout(() => {
+                                URL.revokeObjectURL(link.href);
+                                if (link.parentNode) {
+                                    document.body.removeChild(link);
+                                }
+                            }, 1000);
+                        } else {
+                            const fallbackUrl = processingCanvas.toDataURL(mime);
+                            const link = document.createElement("a");
+                            link.download = currentFileName;
+                            link.href = fallbackUrl;
+                            link.click();
+                        }
+                    }, mime, quality);
                 });
 
                 // Compress menu toggle
@@ -1697,33 +1991,54 @@
                     );
 
                     // Separate filters
-                    let cssFilterString = "";
-                    const customFilters = filters.filter(
-                        (f) => f.enabled && CUSTOM_FILTER_TYPES.includes(f.type),
-                    );
-                    const cssFilters = filters.filter(
-                        (f) => f.enabled && !CUSTOM_FILTER_TYPES.includes(f.type),
-                    );
+                    const activeFilters = filters.filter((f) => f.enabled);
+                    const customFilters = [];
+                    const cssFilters = [];
+                    const directionalBlurFilters = [];
 
-                    cssFilters.forEach((filter) => {
-                        let filterValue = `${filter.value}${filter.unit}`;
-
-                        // Handle blur direction
-                        if (filter.type === 'blur' && filter.params?.[0]?.value) {
-                            const direction = filter.params[0].value;
-                            if (direction === 'horizontal') {
-                                filterValue = `${filter.value}px 0`;
-                            } else if (direction === 'vertical') {
-                                filterValue = `0 ${filter.value}px`;
-                            }
+                    activeFilters.forEach((filter) => {
+                        if (CUSTOM_FILTER_TYPES.includes(filter.type)) {
+                            customFilters.push(filter);
+                        } else if (
+                            filter.type === 'blur' &&
+                            filter.params?.[0]?.value &&
+                            filter.params[0].value !== 'all'
+                        ) {
+                            directionalBlurFilters.push(filter);
+                        } else {
+                            cssFilters.push(filter);
                         }
+                    });
 
+                    let cssFilterString = "";
+                    cssFilters.forEach((filter) => {
+                        const filterValue = `${filter.value}${filter.unit}`;
                         cssFilterString += `${filter.type}(${filterValue}) `;
                     });
 
                     // 1. Apply CSS filters (fastest)
                     ctx.filter = cssFilterString.trim();
                     ctx.drawImage(originalImage, 0, 0);
+
+                    if (directionalBlurFilters.length > 0) {
+                        ctx.filter = 'none';
+                        let imageData = ctx.getImageData(
+                            0,
+                            0,
+                            processingCanvas.width,
+                            processingCanvas.height,
+                        );
+                        directionalBlurFilters.forEach((filter) => {
+                            const direction = filter.params?.[0]?.value || 'all';
+                            if (direction === 'all') return;
+                            applyDirectionalBlurToImageData(
+                                imageData,
+                                filter.value,
+                                direction,
+                            );
+                        });
+                        ctx.putImageData(imageData, 0, 0);
+                    }
 
                     const perPixelFilters = customFilters.filter(
                         (f) => f.type !== "pixelate",
@@ -2195,6 +2510,57 @@
                                 }
                             ]
                         },
+                        chromatic: {
+                            label: "色収差",
+                            min: 0,
+                            max: 50,
+                            value: 8,
+                            unit: "px",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "direction",
+                                    label: "方向",
+                                    type: "select",
+                                    value: "horizontal",
+                                    options: [
+                                        { value: "horizontal", label: "横" },
+                                        { value: "vertical", label: "縦" },
+                                        { value: "diagonal", label: "斜め" }
+                                    ]
+                                }
+                            ]
+                        },
+                        scanlines: {
+                            label: "スキャンライン",
+                            min: 0,
+                            max: 100,
+                            value: 40,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "spacing",
+                                    label: "間隔",
+                                    type: "range",
+                                    value: 6,
+                                    min: 2,
+                                    max: 24,
+                                    step: 1,
+                                    unitLabel: " px"
+                                },
+                                {
+                                    key: "thickness",
+                                    label: "太さ",
+                                    type: "range",
+                                    value: 2,
+                                    min: 1,
+                                    max: 8,
+                                    step: 1,
+                                    unitLabel: " px"
+                                }
+                            ]
+                        },
                         bloom: {
                             label: "ブルーム",
                             min: 0,
@@ -2211,6 +2577,22 @@
                                     max: 200,
                                     value: 100,
                                     unit: "%"
+                                }
+                            ]
+                        },
+                        haze: {
+                            label: "霞",
+                            min: 0,
+                            max: 100,
+                            value: 35,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "tint",
+                                    label: "色味",
+                                    type: "color",
+                                    value: "#f0f6ff"
                                 }
                             ]
                         },
