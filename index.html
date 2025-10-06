@@ -129,12 +129,18 @@
                 <div class="mt-3 text-sm text-slate-500">
                     作成者: しるべ (X: <a href="https://x.com/qxoiuioxp" target="_blank" class="text-blue-600 hover:underline">@qxoiuioxp</a>)
                 </div>
+                <p class="mt-4 text-sm text-emerald-600 font-medium">
+                    ローカルですべて処理は完結します。サーバーに送信はされません。
+                </p>
             </header>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 <section class="lg:col-span-3 bg-white p-6 rounded-xl shadow-lg">
                     <h2 class="text-xl font-bold text-slate-900 mb-3">更新履歴</h2>
                     <ul class="space-y-2 text-sm text-slate-700">
+                        <li>
+                            <span class="font-semibold">2025/10/06</span> — レトロドット（GB風）フィルターと新プリセット（レトロGB／フィルム／ネオン）を追加し、ローカル処理の注意書きを掲載
+                        </li>
                         <li>
                             <span class="font-semibold">2025/10/03</span> — フィルター追加（色収差・スキャンライン・霞）、方向性ぼかしの処理見直し、一括ダウンロード時の拡張子維持などを改善
                         </li>
@@ -212,6 +218,24 @@
                                     data-preset="cool"
                                 >
                                     ❄️ 寒色
+                                </button>
+                                <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-lime-600 to-emerald-700 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="retro-gb"
+                                >
+                                    🟩 レトロGB
+                                </button>
+                                <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-stone-700 to-amber-600 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="film"
+                                >
+                                    📽 フィルム
+                                </button>
+                                <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-cyan-500 via-purple-600 to-fuchsia-600 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="neon-city"
+                                >
+                                    🌆 ネオン
                                 </button>
                             </div>
                             <div
@@ -601,6 +625,24 @@
                                             d="M2 2h4v4H2zm5 0h4v4H7zm5 0h4v4h-4zm5 0h4v4h-4zM2 7h4v4H2zm5 0h4v4H7zm5 0h4v4h-4zm5 0h4v4h-4zM2 12h4v4H2zm5 0h4v4H7zm5 0h4v4h-4zm5 0h4v4h-4zM2 17h4v4H2zm5 0h4v4H7zm5 0h4v4h-4zm5 0h4v4h-4z"
                                         ></path></svg
                                     ><span>ピクセル化</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="dither"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <rect x="3" y="3" width="4" height="4" rx="1" ry="1"></rect>
+                                        <rect x="11" y="5" width="4" height="4" rx="1" ry="1"></rect>
+                                        <rect x="17" y="3" width="4" height="4" rx="1" ry="1"></rect>
+                                        <rect x="5" y="11" width="4" height="4" rx="1" ry="1"></rect>
+                                        <rect x="13" y="13" width="4" height="4" rx="1" ry="1"></rect>
+                                        <rect x="3" y="17" width="4" height="4" rx="1" ry="1"></rect>
+                                        <rect x="17" y="17" width="4" height="4" rx="1" ry="1"></rect>
+                                    </svg><span>GBドット</span>
                                 </button>
                                 <button
                                     class="filter-add-btn"
@@ -1139,11 +1181,482 @@
 
                 // カスタムフィルタータイプのリスト（一元管理）
                 const CUSTOM_FILTER_TYPES = [
-                    "threshold", "pixelate", "posterize", "red", "green", "blue",
+                    "threshold", "pixelate", "dither", "posterize", "red", "green", "blue",
                     "noise", "vignette", "solarize", "sharpen", "exposure", "emboss",
                     "temperature", "vibrance", "gamma", "colorize", "duotone",
                     "tonecurve", "edge", "chromatic", "scanlines", "haze", "bloom"
                 ];
+                const createFilterPresets = () => ({
+                        brightness: {
+                            label: "明度",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        contrast: {
+                            label: "コントラスト",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        saturate: {
+                            label: "彩度",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        exposure: {
+                            label: "露出",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        opacity: {
+                            label: "不透明度",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        grayscale: {
+                            label: "グレースケール",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        sepia: {
+                            label: "セピア",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        invert: {
+                            label: "階調の反転",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        blur: {
+                            label: "ぼかし",
+                            min: 0,
+                            max: 20,
+                            value: 5,
+                            unit: "px",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "direction",
+                                    label: "方向",
+                                    type: "select",
+                                    value: "all",
+                                    options: [
+                                        { value: "all", label: "全体" },
+                                        { value: "horizontal", label: "横方向" },
+                                        { value: "vertical", label: "縦方向" }
+                                    ]
+                                }
+                            ]
+                        },
+                        "hue-rotate": {
+                            label: "色相回転",
+                            min: 0,
+                            max: 360,
+                            value: 180,
+                            unit: "deg",
+                            enabled: true,
+                        },
+                        red: {
+                            label: "赤チャンネル",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        green: {
+                            label: "緑チャンネル",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        blue: {
+                            label: "青チャンネル",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        noise: {
+                            label: "ノイズ",
+                            min: 0,
+                            max: 100,
+                            value: 20,
+                            unit: "",
+                            enabled: true,
+                        },
+                        vignette: {
+                            label: "ビネット",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "shape",
+                                    label: "形状",
+                                    type: "select",
+                                    value: "circle",
+                                    options: [
+                                        { value: "circle", label: "円形" },
+                                        { value: "square", label: "四角形" }
+                                    ]
+                                }
+                            ]
+                        },
+                        threshold: {
+                            label: "二値化",
+                            min: 0,
+                            max: 255,
+                            value: 128,
+                            unit: "",
+                            enabled: true,
+                        },
+                        pixelate: {
+                            label: "ピクセル化",
+                            min: 1,
+                            max: 50,
+                            value: 10,
+                            unit: "px",
+                            enabled: true,
+                        },
+                        dither: {
+                            label: "レトロドット",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "palette",
+                                    label: "パレット",
+                                    type: "select",
+                                    value: "gb",
+                                    options: [
+                                        { value: "gb", label: "GBグリーン" },
+                                        { value: "mono", label: "モノクロ" },
+                                        { value: "sunset", label: "サンセット" }
+                                    ]
+                                },
+                                {
+                                    key: "pattern",
+                                    label: "パターン",
+                                    type: "select",
+                                    value: "mesh",
+                                    options: [
+                                        { value: "mesh", label: "アミアミ" },
+                                        { value: "stagger", label: "ずらし格子" },
+                                        { value: "diagonal", label: "ななめ" }
+                                    ]
+                                },
+                                {
+                                    key: "scale",
+                                    label: "粒度",
+                                    type: "range",
+                                    value: 1,
+                                    min: 1,
+                                    max: 4,
+                                    step: 1,
+                                    unitLabel: " 倍"
+                                }
+                            ]
+                        },
+                        posterize: {
+                            label: "ポスタライズ",
+                            min: 2,
+                            max: 32,
+                            value: 8,
+                            unit: "",
+                            unitLabel: " 段階",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "baseColors",
+                                    label: "基準色",
+                                    type: "select",
+                                    value: "none",
+                                    options: [
+                                        { value: "none", label: "なし" },
+                                        { value: "red", label: "赤系" },
+                                        { value: "green", label: "緑系" },
+                                        { value: "blue", label: "青系" },
+                                        { value: "warm", label: "暖色系" },
+                                        { value: "cool", label: "寒色系" },
+                                        { value: "custom", label: "カスタム" }
+                                    ]
+                                },
+                                {
+                                    key: "customColor",
+                                    label: "カスタム色",
+                                    type: "color",
+                                    value: "#ff0000"
+                                }
+                            ]
+                        },
+                        sharpen: {
+                            label: "シャープ",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        emboss: {
+                            label: "エンボス",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        solarize: {
+                            label: "ソラリゼーション",
+                            min: 0,
+                            max: 255,
+                            value: 128,
+                            unit: "",
+                            enabled: true,
+                        },
+                        temperature: {
+                            label: "色温度",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "",
+                            enabled: true,
+                        },
+                        vibrance: {
+                            label: "自然な彩度",
+                            min: 0,
+                            max: 200,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        gamma: {
+                            label: "ガンマ",
+                            min: 10,
+                            max: 300,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                        },
+                        colorize: {
+                            label: "着色",
+                            min: 0,
+                            max: 360,
+                            value: 180,
+                            unit: "°",
+                            enabled: true,
+                        },
+                        duotone: {
+                            label: "2階調",
+                            min: 0,
+                            max: 100,
+                            value: 50,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "shadowColor",
+                                    label: "シャドウ色",
+                                    type: "color",
+                                    value: "#1a1a4d"
+                                },
+                                {
+                                    key: "highlightColor",
+                                    label: "ハイライト色",
+                                    type: "color",
+                                    value: "#ff6b9d"
+                                }
+                            ]
+                        },
+                        tonecurve: {
+                            label: "トーンカーブ",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "curveType",
+                                    label: "カーブ種類",
+                                    type: "select",
+                                    value: "s",
+                                    options: [
+                                        { value: "s", label: "Sカーブ (コントラスト↑)" },
+                                        { value: "inverse-s", label: "逆Sカーブ (コントラスト↓)" },
+                                        { value: "brighten", label: "明るく" },
+                                        { value: "darken", label: "暗く" }
+                                    ]
+                                }
+                            ]
+                        },
+                        edge: {
+                            label: "輪郭線抽出",
+                            min: 0,
+                            max: 100,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "edgeMode",
+                                    label: "モード",
+                                    type: "select",
+                                    value: "normal",
+                                    options: [
+                                        { value: "normal", label: "通常" },
+                                        { value: "invert", label: "反転" }
+                                    ]
+                                }
+                            ]
+                        },
+                        chromatic: {
+                            label: "色収差",
+                            min: 0,
+                            max: 50,
+                            value: 8,
+                            unit: "px",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "direction",
+                                    label: "方向",
+                                    type: "select",
+                                    value: "horizontal",
+                                    options: [
+                                        { value: "horizontal", label: "横" },
+                                        { value: "vertical", label: "縦" },
+                                        { value: "diagonal", label: "斜め" }
+                                    ]
+                                }
+                            ]
+                        },
+                        scanlines: {
+                            label: "スキャンライン",
+                            min: 0,
+                            max: 100,
+                            value: 40,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "spacing",
+                                    label: "間隔",
+                                    type: "range",
+                                    value: 6,
+                                    min: 2,
+                                    max: 24,
+                                    step: 1,
+                                    unitLabel: " px"
+                                },
+                                {
+                                    key: "thickness",
+                                    label: "太さ",
+                                    type: "range",
+                                    value: 2,
+                                    min: 1,
+                                    max: 8,
+                                    step: 1,
+                                    unitLabel: " px"
+                                }
+                            ]
+                        },
+                        bloom: {
+                            label: "ブルーム",
+                            min: 0,
+                            max: 255,
+                            value: 200,
+                            unit: "",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "intensity",
+                                    label: "強度",
+                                    type: "range",
+                                    min: 0,
+                                    max: 200,
+                                    value: 100,
+                                    unit: "%"
+                                }
+                            ]
+                        },
+                        haze: {
+                            label: "霞",
+                            min: 0,
+                            max: 100,
+                            value: 35,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "tint",
+                                    label: "色味",
+                                    type: "color",
+                                    value: "#f0f6ff"
+                                }
+                            ]
+                        },
+                                    });
+
+                const instantiateFilter = (type, overrides = {}) => {
+                    const presets = createFilterPresets();
+                    const base = presets[type];
+                    if (!base) {
+                        return null;
+                    }
+                    const baseConfig = { type, ...base };
+                    const cloned = typeof structuredClone === "function"
+                        ? structuredClone(baseConfig)
+                        : JSON.parse(JSON.stringify(baseConfig));
+                    if (typeof overrides.value !== "undefined") {
+                        cloned.value = overrides.value;
+                    }
+                    if (typeof overrides.enabled !== "undefined") {
+                        cloned.enabled = overrides.enabled;
+                    }
+                    if (Array.isArray(overrides.params) && cloned.params) {
+                        overrides.params.forEach((overrideParam) => {
+                            const targetParam = cloned.params.find((p) => p.key === overrideParam.key);
+                            if (targetParam) {
+                                targetParam.value = overrideParam.value;
+                            }
+                        });
+                    }
+                    return cloned;
+                };
+
 
                 // 畳み込みフィルター適用関数（共通）
                 const applyConvolution = (src, dst, kernel, blend, offset = 0) => {
@@ -1283,6 +1796,68 @@
                                 data[i] = r;
                                 data[i + 1] = g;
                                 data[i + 2] = b;
+                            }
+                        }
+                    } else if (filter.type === "dither") {
+                        const intensity = clamp(filter.value / 100, 0, 1);
+                        if (intensity === 0) return;
+                        const paletteKey = filter.params?.find((p) => p.key === "palette")?.value || "gb";
+                        const patternKey = filter.params?.find((p) => p.key === "pattern")?.value || "mesh";
+                        const scaleRaw = parseInt(filter.params?.find((p) => p.key === "scale")?.value ?? "1", 10);
+                        const scale = clamp(Number.isFinite(scaleRaw) ? scaleRaw : 1, 1, 8);
+
+                        const palettes = {
+                            gb: ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"],
+                            mono: ["#111111", "#555555", "#aaaaaa", "#f5f5f5"],
+                            sunset: ["#1c1b3a", "#64436a", "#d16c4b", "#ffd27f"],
+                        };
+
+                        const ditherPatterns = {
+                            mesh: [
+                                [0.10, 0.70, 0.18, 0.78],
+                                [0.82, 0.32, 0.92, 0.42],
+                                [0.22, 0.82, 0.12, 0.72],
+                                [0.88, 0.38, 0.96, 0.48],
+                            ],
+                            stagger: [
+                                [0.05, 0.55, 0.15, 0.65],
+                                [0.35, 0.85, 0.45, 0.95],
+                                [0.15, 0.65, 0.05, 0.55],
+                                [0.45, 0.95, 0.35, 0.85],
+                            ],
+                            diagonal: [
+                                [0.05, 0.20, 0.35, 0.50],
+                                [0.20, 0.35, 0.50, 0.65],
+                                [0.35, 0.50, 0.65, 0.80],
+                                [0.50, 0.65, 0.80, 0.95],
+                            ],
+                        };
+
+                        const paletteHex = palettes[paletteKey] || palettes.gb;
+                        const palette = paletteHex.map((hex) => parseHexColor(hex));
+                        const levels = palette.length - 1;
+                        if (levels <= 0) return;
+
+                        const pattern = ditherPatterns[patternKey] || ditherPatterns.mesh;
+                        const patternHeight = pattern.length;
+                        const patternWidth = pattern[0]?.length || 1;
+
+                        for (let y = 0; y < h; y++) {
+                            for (let x = 0; x < w; x++) {
+                                const idx = (y * w + x) * 4;
+                                const gray = (data[idx] + data[idx + 1] + data[idx + 2]) / (3 * 255);
+                                const sampleX = Math.floor(x / scale);
+                                const sampleY = Math.floor(y / scale);
+                                const threshold = pattern[sampleY % patternHeight][sampleX % patternWidth];
+                                const scaled = gray * levels;
+                                const baseIndex = Math.max(0, Math.floor(scaled));
+                                const frac = scaled - baseIndex;
+                                const paletteIndex = Math.min(levels, baseIndex + (frac > threshold ? 1 : 0));
+                                const color = palette[paletteIndex] || palette[palette.length - 1];
+
+                                data[idx] = data[idx] * (1 - intensity) + color.r * intensity;
+                                data[idx + 1] = data[idx + 1] * (1 - intensity) + color.g * intensity;
+                                data[idx + 2] = data[idx + 2] * (1 - intensity) + color.b * intensity;
                             }
                         }
                     } else if (["red", "green", "blue"].includes(filter.type)) {
@@ -2196,408 +2771,12 @@
                 };
 
                 const addFilter = (type) => {
-                    const filterPresets = {
-                        brightness: {
-                            label: "明度",
-                            min: 0,
-                            max: 200,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        contrast: {
-                            label: "コントラスト",
-                            min: 0,
-                            max: 200,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        saturate: {
-                            label: "彩度",
-                            min: 0,
-                            max: 200,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        exposure: {
-                            label: "露出",
-                            min: 0,
-                            max: 200,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        opacity: {
-                            label: "不透明度",
-                            min: 0,
-                            max: 100,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        grayscale: {
-                            label: "グレースケール",
-                            min: 0,
-                            max: 100,
-                            value: 50,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        sepia: {
-                            label: "セピア",
-                            min: 0,
-                            max: 100,
-                            value: 50,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        invert: {
-                            label: "階調の反転",
-                            min: 0,
-                            max: 100,
-                            value: 50,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        blur: {
-                            label: "ぼかし",
-                            min: 0,
-                            max: 20,
-                            value: 5,
-                            unit: "px",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "direction",
-                                    label: "方向",
-                                    type: "select",
-                                    value: "all",
-                                    options: [
-                                        { value: "all", label: "全体" },
-                                        { value: "horizontal", label: "横方向" },
-                                        { value: "vertical", label: "縦方向" }
-                                    ]
-                                }
-                            ]
-                        },
-                        "hue-rotate": {
-                            label: "色相回転",
-                            min: 0,
-                            max: 360,
-                            value: 180,
-                            unit: "deg",
-                            enabled: true,
-                        },
-                        red: {
-                            label: "赤チャンネル",
-                            min: 0,
-                            max: 200,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        green: {
-                            label: "緑チャンネル",
-                            min: 0,
-                            max: 200,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        blue: {
-                            label: "青チャンネル",
-                            min: 0,
-                            max: 200,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        noise: {
-                            label: "ノイズ",
-                            min: 0,
-                            max: 100,
-                            value: 20,
-                            unit: "",
-                            enabled: true,
-                        },
-                        vignette: {
-                            label: "ビネット",
-                            min: 0,
-                            max: 100,
-                            value: 50,
-                            unit: "%",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "shape",
-                                    label: "形状",
-                                    type: "select",
-                                    value: "circle",
-                                    options: [
-                                        { value: "circle", label: "円形" },
-                                        { value: "square", label: "四角形" }
-                                    ]
-                                }
-                            ]
-                        },
-                        threshold: {
-                            label: "二値化",
-                            min: 0,
-                            max: 255,
-                            value: 128,
-                            unit: "",
-                            enabled: true,
-                        },
-                        pixelate: {
-                            label: "ピクセル化",
-                            min: 1,
-                            max: 50,
-                            value: 10,
-                            unit: "px",
-                            enabled: true,
-                        },
-                        posterize: {
-                            label: "ポスタライズ",
-                            min: 2,
-                            max: 32,
-                            value: 8,
-                            unit: "",
-                            unitLabel: " 段階",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "baseColors",
-                                    label: "基準色",
-                                    type: "select",
-                                    value: "none",
-                                    options: [
-                                        { value: "none", label: "なし" },
-                                        { value: "red", label: "赤系" },
-                                        { value: "green", label: "緑系" },
-                                        { value: "blue", label: "青系" },
-                                        { value: "warm", label: "暖色系" },
-                                        { value: "cool", label: "寒色系" },
-                                        { value: "custom", label: "カスタム" }
-                                    ]
-                                },
-                                {
-                                    key: "customColor",
-                                    label: "カスタム色",
-                                    type: "color",
-                                    value: "#ff0000"
-                                }
-                            ]
-                        },
-                        sharpen: {
-                            label: "シャープ",
-                            min: 0,
-                            max: 100,
-                            value: 50,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        emboss: {
-                            label: "エンボス",
-                            min: 0,
-                            max: 100,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        solarize: {
-                            label: "ソラリゼーション",
-                            min: 0,
-                            max: 255,
-                            value: 128,
-                            unit: "",
-                            enabled: true,
-                        },
-                        temperature: {
-                            label: "色温度",
-                            min: 0,
-                            max: 100,
-                            value: 50,
-                            unit: "",
-                            enabled: true,
-                        },
-                        vibrance: {
-                            label: "自然な彩度",
-                            min: 0,
-                            max: 200,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        gamma: {
-                            label: "ガンマ",
-                            min: 10,
-                            max: 300,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                        },
-                        colorize: {
-                            label: "着色",
-                            min: 0,
-                            max: 360,
-                            value: 180,
-                            unit: "°",
-                            enabled: true,
-                        },
-                        duotone: {
-                            label: "2階調",
-                            min: 0,
-                            max: 100,
-                            value: 50,
-                            unit: "%",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "shadowColor",
-                                    label: "シャドウ色",
-                                    type: "color",
-                                    value: "#1a1a4d"
-                                },
-                                {
-                                    key: "highlightColor",
-                                    label: "ハイライト色",
-                                    type: "color",
-                                    value: "#ff6b9d"
-                                }
-                            ]
-                        },
-                        tonecurve: {
-                            label: "トーンカーブ",
-                            min: 0,
-                            max: 100,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "curveType",
-                                    label: "カーブ種類",
-                                    type: "select",
-                                    value: "s",
-                                    options: [
-                                        { value: "s", label: "Sカーブ (コントラスト↑)" },
-                                        { value: "inverse-s", label: "逆Sカーブ (コントラスト↓)" },
-                                        { value: "brighten", label: "明るく" },
-                                        { value: "darken", label: "暗く" }
-                                    ]
-                                }
-                            ]
-                        },
-                        edge: {
-                            label: "輪郭線抽出",
-                            min: 0,
-                            max: 100,
-                            value: 100,
-                            unit: "%",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "edgeMode",
-                                    label: "モード",
-                                    type: "select",
-                                    value: "normal",
-                                    options: [
-                                        { value: "normal", label: "通常" },
-                                        { value: "invert", label: "反転" }
-                                    ]
-                                }
-                            ]
-                        },
-                        chromatic: {
-                            label: "色収差",
-                            min: 0,
-                            max: 50,
-                            value: 8,
-                            unit: "px",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "direction",
-                                    label: "方向",
-                                    type: "select",
-                                    value: "horizontal",
-                                    options: [
-                                        { value: "horizontal", label: "横" },
-                                        { value: "vertical", label: "縦" },
-                                        { value: "diagonal", label: "斜め" }
-                                    ]
-                                }
-                            ]
-                        },
-                        scanlines: {
-                            label: "スキャンライン",
-                            min: 0,
-                            max: 100,
-                            value: 40,
-                            unit: "%",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "spacing",
-                                    label: "間隔",
-                                    type: "range",
-                                    value: 6,
-                                    min: 2,
-                                    max: 24,
-                                    step: 1,
-                                    unitLabel: " px"
-                                },
-                                {
-                                    key: "thickness",
-                                    label: "太さ",
-                                    type: "range",
-                                    value: 2,
-                                    min: 1,
-                                    max: 8,
-                                    step: 1,
-                                    unitLabel: " px"
-                                }
-                            ]
-                        },
-                        bloom: {
-                            label: "ブルーム",
-                            min: 0,
-                            max: 255,
-                            value: 200,
-                            unit: "",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "intensity",
-                                    label: "強度",
-                                    type: "range",
-                                    min: 0,
-                                    max: 200,
-                                    value: 100,
-                                    unit: "%"
-                                }
-                            ]
-                        },
-                        haze: {
-                            label: "霞",
-                            min: 0,
-                            max: 100,
-                            value: 35,
-                            unit: "%",
-                            enabled: true,
-                            params: [
-                                {
-                                    key: "tint",
-                                    label: "色味",
-                                    type: "color",
-                                    value: "#f0f6ff"
-                                }
-                            ]
-                        },
-                    };
-                    filters.push({ type, ...filterPresets[type] });
+                                        const filterInstance = instantiateFilter(type);
+                    if (!filterInstance) {
+                        console.warn(`未対応のフィルタータイプ: ${type}`);
+                        return;
+                    }
+                    filters.push(filterInstance);
                     renderFilterList();
                     applyFiltersImmediate();
                 };
@@ -2650,6 +2829,77 @@
                         { type: 'saturate', value: 120 },
                         { type: 'brightness', value: 105 },
                     ],
+                    'retro-gb': [
+                        {
+                            type: 'dither',
+                            value: 100,
+                            params: [
+                                { key: 'palette', value: 'gb' },
+                                { key: 'pattern', value: 'mesh' },
+                                { key: 'scale', value: 2 }
+                            ]
+                        },
+                        {
+                            type: 'tonecurve',
+                            value: 60,
+                            params: [
+                                { key: 'curveType', value: 's' }
+                            ]
+                        },
+                        {
+                            type: 'scanlines',
+                            value: 28,
+                            params: [
+                                { key: 'spacing', value: 6 },
+                                { key: 'thickness', value: 2 }
+                            ]
+                        }
+                    ],
+                    film: [
+                        {
+                            type: 'tonecurve',
+                            value: 75,
+                            params: [
+                                { key: 'curveType', value: 's' }
+                            ]
+                        },
+                        { type: 'temperature', value: 55 },
+                        { type: 'colorize', value: 30 },
+                        {
+                            type: 'vignette',
+                            value: 60,
+                            params: [
+                                { key: 'shape', value: 'circle' }
+                            ]
+                        },
+                        { type: 'noise', value: 12 }
+                    ],
+                    'neon-city': [
+                        { type: 'vibrance', value: 185 },
+                        { type: 'saturate', value: 170 },
+                        {
+                            type: 'chromatic',
+                            value: 14,
+                            params: [
+                                { key: 'direction', value: 'diagonal' }
+                            ]
+                        },
+                        {
+                            type: 'scanlines',
+                            value: 45,
+                            params: [
+                                { key: 'spacing', value: 4 },
+                                { key: 'thickness', value: 1 }
+                            ]
+                        },
+                        {
+                            type: 'bloom',
+                            value: 210,
+                            params: [
+                                { key: 'intensity', value: 150 }
+                            ]
+                        }
+                    ],
                 };
 
                 const applyPreset = (presetName) => {
@@ -2660,26 +2910,11 @@
                     filters = [];
 
                     // Add preset filters
-                    preset.forEach(filterConfig => {
-                        const filterData = { ...filterConfig };
-                        const filterPreset = {
-                            brightness: { label: "明度", min: 0, max: 200, unit: "%", enabled: true },
-                            contrast: { label: "コントラスト", min: 0, max: 200, unit: "%", enabled: true },
-                            saturate: { label: "彩度", min: 0, max: 200, unit: "%", enabled: true },
-                            temperature: { label: "色温度", min: 0, max: 100, unit: "", enabled: true },
-                            colorize: { label: "着色", min: 0, max: 360, unit: "°", enabled: true },
-                            vibrance: { label: "自然な彩度", min: 0, max: 200, unit: "%", enabled: true },
-                            sharpen: { label: "シャープ", min: 0, max: 100, unit: "%", enabled: true },
-                            pixelate: { label: "ピクセル化", min: 1, max: 50, unit: "px", enabled: true },
-                        };
-
-                        const basePreset = filterPreset[filterData.type];
-                        if (basePreset) {
-                            filters.push({
-                                type: filterData.type,
-                                value: filterData.value,
-                                ...basePreset
-                            });
+                    preset.forEach((filterConfig) => {
+                        const { type, ...override } = filterConfig;
+                        const filterInstance = instantiateFilter(type, override);
+                        if (filterInstance) {
+                            filters.push(filterInstance);
                         }
                     });
 
@@ -2829,5 +3064,3 @@
         </script>
     </body>
 </html>
-
-                           
