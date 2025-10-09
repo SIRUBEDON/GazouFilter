@@ -139,6 +139,9 @@
                     <h2 class="text-xl font-bold text-slate-900 mb-3">更新履歴</h2>
                     <ul class="space-y-2 text-sm text-slate-700">
                         <li>
+                            <span class="font-semibold">2025/10/09</span> — カラー数圧縮フィルターの厳密色数制限（メディアンカット＋ディザー）実装、ドット絵風プリセットの調整、色数制限フィルターの追加ボタンを整備
+                        </li>
+                        <li>
                             <span class="font-semibold">2025/10/06</span> — レトロドット（GB風）フィルターと新プリセット（レトロGB／フィルム／ネオン）を追加し、ローカル処理の注意書きを掲載
                         </li>
                         <li>
@@ -208,6 +211,12 @@
                                     🎮 ゲーム風
                                 </button>
                                 <button
+                                    class="preset-btn p-4 bg-gradient-to-br from-amber-500 via-lime-500 to-emerald-600 text-white rounded-lg hover:shadow-lg transition font-semibold"
+                                    data-preset="dot-art"
+                                >
+                                    🧩 ドット絵風
+                                </button>
+                                <button
                                     class="preset-btn p-4 bg-gradient-to-br from-red-400 to-yellow-400 text-white rounded-lg hover:shadow-lg transition font-semibold"
                                     data-preset="warm"
                                 >
@@ -242,6 +251,24 @@
                                 id="tab-content-adjust"
                                 class="tab-panel hidden grid grid-cols-3 sm:grid-cols-4 gap-2"
                             >
+                                <button
+                                    class="filter-add-btn"
+                                    data-filter="resize"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M4 8V5a1 1 0 011-1h3M20 16v3a1 1 0 01-1 1h-3M16 4h3a1 1 0 011 1v3M8 20H5a1 1 0 01-1-1v-3M9 15l6-6M9 9h0M15 15h0"
+                                        ></path></svg
+                                    ><span>リサイズ</span>
+                                </button>
                                 <button
                                     class="filter-add-btn"
                                     data-filter="brightness"
@@ -664,6 +691,24 @@
                                 </button>
                                 <button
                                     class="filter-add-btn"
+                                    data-filter="colorquant"
+                                >
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M4 7h16M4 12h16M4 17h16M7 4v3M12 4v3M17 4v3M7 17v3M12 17v3M17 17v3"
+                                        ></path></svg
+                                    ><span>色数制限</span>
+                                </button>
+                                <button
+                                    class="filter-add-btn"
                                     data-filter="sharpen"
                                 >
                                     <svg
@@ -1029,13 +1074,20 @@
                         </div>
                         <div
                             id="preview-container"
-                            class="hidden w-full h-full p-2"
+                            class="hidden w-full h-full p-2 relative"
                         >
                             <img
                                 id="preview-image"
                                 class="max-w-full max-h-full object-contain mx-auto"
                                 draggable="true"
                             />
+                            <div
+                                id="output-meta"
+                                class="hidden absolute bottom-3 right-3 bg-slate-900/70 text-white text-xs px-2 py-1 rounded shadow"
+                            >
+                                出力サイズ:
+                                <span id="output-dimensions">-</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1075,6 +1127,8 @@
                     document.getElementById("processing-canvas");
                 const filterListEl = document.getElementById("filter-list");
                 const noFiltersMsg = document.getElementById("no-filters-msg");
+                const outputMeta = document.getElementById("output-meta");
+                const outputDimensionsEl = document.getElementById("output-dimensions");
 
                 const uploadBtn = document.getElementById("upload-btn");
                 const batchUploadBtn = document.getElementById("batch-upload-btn");
@@ -1171,6 +1225,345 @@
                 };
 
                 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+                const MAX_RESIZE_DIMENSION = 8192;
+                const ALLOWED_COLOR_LEVELS = Object.freeze([2, 4, 8, 16, 32, 64, 128, 256]);
+                const MAX_COLOR_QUANT_SAMPLES = 12000;
+
+                const getFilterParamValue = (filter, key, fallback = null) =>
+                    filter.params?.find((p) => p.key === key)?.value ?? fallback;
+
+                const toPositiveInt = (value, fallback) => {
+                    const parsed = parseInt(value, 10);
+                    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+                };
+
+                const resolveResizeDimensions = (filter, baseWidth, baseHeight) => {
+                    if (!filter) {
+                        return { width: baseWidth, height: baseHeight };
+                    }
+
+                    const mode = getFilterParamValue(filter, "mode", "percent");
+                    const keepRatio = getFilterParamValue(filter, "keepRatio", "true") !== "false";
+                    const aspectRatio = baseWidth / baseHeight || 1;
+
+                    let targetWidth = baseWidth;
+                    let targetHeight = baseHeight;
+
+                    if (mode === "percent") {
+                        const percent = Math.max(1, parseFloat(filter.value) || 100);
+                        const scale = clamp(percent / 100, 0.01, 8);
+                        targetWidth = baseWidth * scale;
+                        targetHeight = baseHeight * scale;
+                    } else if (mode === "width") {
+                        const widthParam = toPositiveInt(getFilterParamValue(filter, "width", baseWidth), baseWidth);
+                        targetWidth = widthParam;
+                        if (keepRatio) {
+                            targetHeight = widthParam / aspectRatio;
+                        } else {
+                            targetHeight = toPositiveInt(getFilterParamValue(filter, "height", baseHeight), baseHeight);
+                        }
+                    } else if (mode === "height") {
+                        const heightParam = toPositiveInt(getFilterParamValue(filter, "height", baseHeight), baseHeight);
+                        targetHeight = heightParam;
+                        if (keepRatio) {
+                            targetWidth = heightParam * aspectRatio;
+                        } else {
+                            targetWidth = toPositiveInt(getFilterParamValue(filter, "width", baseWidth), baseWidth);
+                        }
+                    } else if (mode === "both") {
+                        targetWidth = toPositiveInt(getFilterParamValue(filter, "width", baseWidth), baseWidth);
+                        targetHeight = toPositiveInt(getFilterParamValue(filter, "height", baseHeight), baseHeight);
+                    }
+
+                    const clampedWidth = clamp(Math.round(targetWidth), 1, MAX_RESIZE_DIMENSION);
+                    const clampedHeight = clamp(Math.round(targetHeight), 1, MAX_RESIZE_DIMENSION);
+                    return { width: clampedWidth, height: clampedHeight };
+                };
+
+                const splitFiltersForResize = (activeFilters, baseWidth, baseHeight) => {
+                    let resizeFilter = null;
+                    const remaining = [];
+
+                    activeFilters.forEach((filter) => {
+                        if (filter.type === "resize") {
+                            resizeFilter = filter;
+                        } else {
+                            remaining.push(filter);
+                        }
+                    });
+
+                    const { width: targetWidth, height: targetHeight } = resolveResizeDimensions(
+                        resizeFilter,
+                        baseWidth,
+                        baseHeight,
+                    );
+
+                    return { resizeFilter, remaining, targetWidth, targetHeight };
+                };
+
+                const updateOutputDimensions = (width, height) => {
+                    if (!outputMeta || !outputDimensionsEl) return;
+                    outputMeta.classList.remove("hidden");
+                    outputDimensionsEl.textContent = `${width} × ${height}px`;
+                };
+
+                const snapToAllowedColorLevel = (value = 16) => {
+                    const numeric = Number.isFinite(value) ? value : 16;
+                    if (numeric <= ALLOWED_COLOR_LEVELS[0]) {
+                        return ALLOWED_COLOR_LEVELS[0];
+                    }
+                    if (numeric >= ALLOWED_COLOR_LEVELS[ALLOWED_COLOR_LEVELS.length - 1]) {
+                        return ALLOWED_COLOR_LEVELS[ALLOWED_COLOR_LEVELS.length - 1];
+                    }
+                    let closest = ALLOWED_COLOR_LEVELS[0];
+                    let minDiff = Math.abs(numeric - closest);
+                    for (let i = 1; i < ALLOWED_COLOR_LEVELS.length; i++) {
+                        const candidate = ALLOWED_COLOR_LEVELS[i];
+                        const diff = Math.abs(numeric - candidate);
+                        if (diff < minDiff) {
+                            closest = candidate;
+                            minDiff = diff;
+                        }
+                    }
+                    return closest;
+                };
+
+                const sampleColorsForQuantization = (imageData, levels) => {
+                    const { data } = imageData;
+                    const totalPixels = data.length / 4;
+                    const baseTarget = Math.max(levels * 16, 1024);
+                    const targetSamples = Math.min(
+                        MAX_COLOR_QUANT_SAMPLES,
+                        Math.max(baseTarget, 64),
+                    );
+                    const step = Math.max(1, Math.floor(totalPixels / targetSamples));
+                    const samples = [];
+                    const seen = new Set();
+                    for (let i = 0; i < data.length; i += step * 4) {
+                        const alpha = data[i + 3];
+                        if (alpha < 1) continue;
+                        const r = data[i];
+                        const g = data[i + 1];
+                        const b = data[i + 2];
+                        const key = (r << 16) | (g << 8) | b;
+                        if (seen.has(key)) continue;
+                        seen.add(key);
+                        samples.push([r, g, b]);
+                        if (samples.length >= targetSamples) break;
+                    }
+                    if (samples.length === 0) {
+                        samples.push([0, 0, 0]);
+                    }
+                    return samples;
+                };
+
+                const channelRange = (bucket, channelIndex) => {
+                    let min = 255;
+                    let max = 0;
+                    for (let i = 0; i < bucket.length; i++) {
+                        const value = bucket[i][channelIndex];
+                        if (value < min) min = value;
+                        if (value > max) max = value;
+                    }
+                    return { min, max, delta: max - min };
+                };
+
+                const bucketRange = (bucket) => {
+                    const rRange = channelRange(bucket, 0).delta;
+                    const gRange = channelRange(bucket, 1).delta;
+                    const bRange = channelRange(bucket, 2).delta;
+                    return Math.max(rRange, gRange, bRange);
+                };
+
+                const splitColorBucket = (bucket) => {
+                    if (bucket.length <= 1) {
+                        return [bucket.slice(), []];
+                    }
+                    const ranges = [
+                        { channel: 0, ...channelRange(bucket, 0) },
+                        { channel: 1, ...channelRange(bucket, 1) },
+                        { channel: 2, ...channelRange(bucket, 2) },
+                    ].sort((a, b) => b.delta - a.delta);
+
+                    const target = ranges[0];
+                    if (!target || target.delta === 0) {
+                        return [bucket.slice(), []];
+                    }
+
+                    const channel = target.channel;
+                    const sorted = bucket.slice().sort(
+                        (a, b) => a[channel] - b[channel],
+                    );
+                    const mid = Math.floor(sorted.length / 2);
+                    const left = sorted.slice(0, mid);
+                    const right = sorted.slice(mid);
+
+                    if (!left.length || !right.length) {
+                        return [bucket.slice(), []];
+                    }
+
+                    return [left, right];
+                };
+
+                const buildPaletteMedianCut = (imageData, requestedLevels) => {
+                    const snappedLevels = snapToAllowedColorLevel(requestedLevels);
+                    const samples = sampleColorsForQuantization(imageData, snappedLevels);
+                    const target = Math.min(snappedLevels, samples.length);
+
+                    if (target <= 1) {
+                        const [firstColor] = samples;
+                        return [[firstColor[0], firstColor[1], firstColor[2]]];
+                    }
+
+                    let buckets = [samples];
+
+                    while (buckets.length < target) {
+                        buckets.sort((a, b) => bucketRange(b) - bucketRange(a));
+                        const bucket = buckets.shift();
+                        if (!bucket) break;
+                        if (bucket.length <= 1) {
+                            buckets.push(bucket);
+                            break;
+                        }
+                        const [left, right] = splitColorBucket(bucket);
+                        if (!right.length) {
+                            buckets.push(bucket);
+                            break;
+                        }
+                        buckets.push(left, right);
+                    }
+
+                    if (buckets.length > target) {
+                        buckets = buckets.slice(0, target);
+                    }
+
+                    const palette = buckets.map((bucket) => {
+                        let r = 0, g = 0, b = 0;
+                        const len = bucket.length || 1;
+                        for (let i = 0; i < len; i++) {
+                            r += bucket[i][0];
+                            g += bucket[i][1];
+                            b += bucket[i][2];
+                        }
+                        return [
+                            Math.round(r / len),
+                            Math.round(g / len),
+                            Math.round(b / len),
+                        ];
+                    });
+
+                    while (palette.length < target) {
+                        palette.push(palette[palette.length - 1]);
+                    }
+
+                    return palette;
+                };
+
+                const findNearestPaletteColor = (palette, r, g, b) => {
+                    let closest = palette[0];
+                    let minDist = Infinity;
+                    for (let i = 0; i < palette.length; i++) {
+                        const pr = palette[i][0];
+                        const pg = palette[i][1];
+                        const pb = palette[i][2];
+                        const dr = r - pr;
+                        const dg = g - pg;
+                        const db = b - pb;
+                        const dist = dr * dr + dg * dg + db * db;
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closest = palette[i];
+                            if (dist === 0) break;
+                        }
+                    }
+                    return closest;
+                };
+
+                const applyExactColorQuantization = (imageData, levels, ditherStrength = 0) => {
+                    const snappedLevels = snapToAllowedColorLevel(levels);
+                    const palette = buildPaletteMedianCut(imageData, snappedLevels);
+                    if (!palette.length) {
+                        return 0;
+                    }
+
+                    const { data, width, height } = imageData;
+                    const strength = clamp(ditherStrength, 0, 1);
+                    const cache = new Map();
+                    const getNearestColor = (r, g, b) => {
+                        const key =
+                            ((Math.round(r) & 0xff) << 16) |
+                            ((Math.round(g) & 0xff) << 8) |
+                            (Math.round(b) & 0xff);
+                        if (cache.has(key)) {
+                            return cache.get(key);
+                        }
+                        const nearest = findNearestPaletteColor(palette, r, g, b);
+                        cache.set(key, nearest);
+                        return nearest;
+                    };
+
+                    if (strength > 0) {
+                        const floatData = new Float32Array(data.length);
+                        for (let i = 0; i < data.length; i++) {
+                            floatData[i] = data[i];
+                        }
+                        const weights = [
+                            { dx: 1, dy: 0, weight: 7 / 16 },
+                            { dx: -1, dy: 1, weight: 3 / 16 },
+                            { dx: 0, dy: 1, weight: 5 / 16 },
+                            { dx: 1, dy: 1, weight: 1 / 16 },
+                        ];
+
+                        for (let y = 0; y < height; y++) {
+                            for (let x = 0; x < width; x++) {
+                                const idx = (y * width + x) * 4;
+                                const alpha = data[idx + 3];
+                                if (alpha < 1) continue;
+
+                                const oldR = floatData[idx];
+                                const oldG = floatData[idx + 1];
+                                const oldB = floatData[idx + 2];
+                                const nearest = getNearestColor(oldR, oldG, oldB);
+
+                                data[idx] = nearest[0];
+                                data[idx + 1] = nearest[1];
+                                data[idx + 2] = nearest[2];
+
+                                floatData[idx] = nearest[0];
+                                floatData[idx + 1] = nearest[1];
+                                floatData[idx + 2] = nearest[2];
+
+                                const errR = (oldR - nearest[0]) * strength;
+                                const errG = (oldG - nearest[1]) * strength;
+                                const errB = (oldB - nearest[2]) * strength;
+
+                                for (let w = 0; w < weights.length; w++) {
+                                    const { dx, dy, weight } = weights[w];
+                                    const nx = x + dx;
+                                    const ny = y + dy;
+                                    if (nx < 0 || nx >= width || ny < 0 || ny >= height) {
+                                        continue;
+                                    }
+                                    const nIdx = (ny * width + nx) * 4;
+                                    floatData[nIdx] = clamp(floatData[nIdx] + errR * weight, 0, 255);
+                                    floatData[nIdx + 1] = clamp(floatData[nIdx + 1] + errG * weight, 0, 255);
+                                    floatData[nIdx + 2] = clamp(floatData[nIdx + 2] + errB * weight, 0, 255);
+                                }
+                            }
+                        }
+                    } else {
+                        for (let i = 0; i < data.length; i += 4) {
+                            const alpha = data[i + 3];
+                            if (alpha < 1) continue;
+                            const nearest = getNearestColor(data[i], data[i + 1], data[i + 2]);
+                            data[i] = nearest[0];
+                            data[i + 1] = nearest[1];
+                            data[i + 2] = nearest[2];
+                        }
+                    }
+
+                    return palette.length;
+                };
 
                 let currentExportFormat = EXPORT_FORMATS[".png"];
                 let currentFileBaseName = "image";
@@ -1181,12 +1574,62 @@
 
                 // カスタムフィルタータイプのリスト（一元管理）
                 const CUSTOM_FILTER_TYPES = [
-                    "threshold", "pixelate", "dither", "posterize", "red", "green", "blue",
+                    "threshold", "pixelate", "dither", "posterize", "colorquant", "red", "green", "blue",
                     "noise", "vignette", "solarize", "sharpen", "exposure", "emboss",
                     "temperature", "vibrance", "gamma", "colorize", "duotone",
                     "tonecurve", "edge", "chromatic", "scanlines", "haze", "bloom"
                 ];
                 const createFilterPresets = () => ({
+                        resize: {
+                            label: "リサイズ",
+                            min: 10,
+                            max: 400,
+                            value: 100,
+                            unit: "%",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "mode",
+                                    label: "方式",
+                                    type: "select",
+                                    value: "percent",
+                                    options: [
+                                        { value: "percent", label: "%指定" },
+                                        { value: "width", label: "横幅指定" },
+                                        { value: "height", label: "縦幅指定" },
+                                        { value: "both", label: "幅+高さ" }
+                                    ]
+                                },
+                                {
+                                    key: "width",
+                                    label: "横幅",
+                                    type: "number",
+                                    value: 512,
+                                    min: 1,
+                                    max: 8192,
+                                    unitLabel: " px"
+                                },
+                                {
+                                    key: "height",
+                                    label: "縦幅",
+                                    type: "number",
+                                    value: 512,
+                                    min: 1,
+                                    max: 8192,
+                                    unitLabel: " px"
+                                },
+                                {
+                                    key: "keepRatio",
+                                    label: "比率維持",
+                                    type: "select",
+                                    value: "true",
+                                    options: [
+                                        { value: "true", label: "維持する" },
+                                        { value: "false", label: "維持しない" }
+                                    ]
+                                }
+                            ]
+                        },
                         brightness: {
                             label: "明度",
                             min: 0,
@@ -1360,8 +1803,9 @@
                                     key: "palette",
                                     label: "パレット",
                                     type: "select",
-                                    value: "gb",
+                                    value: "original",
                                     options: [
+                                        { value: "original", label: "カラー保持" },
                                         { value: "gb", label: "GBグリーン" },
                                         { value: "mono", label: "モノクロ" },
                                         { value: "sunset", label: "サンセット" }
@@ -1387,6 +1831,44 @@
                                     max: 4,
                                     step: 1,
                                     unitLabel: " 倍"
+                                }
+                            ]
+                        },
+                        colorquant: {
+                            label: "カラー数圧縮",
+                            min: 2,
+                            max: 256,
+                            value: 16,
+                            step: 1,
+                            unit: "",
+                            unitLabel: " 色",
+                            enabled: true,
+                            params: [
+                                {
+                                    key: "levels",
+                                    label: "色数",
+                                    type: "select",
+                                    value: "16",
+                                    options: [
+                                        { value: "2", label: "2色" },
+                                        { value: "4", label: "4色" },
+                                        { value: "8", label: "8色" },
+                                        { value: "16", label: "16色" },
+                                        { value: "32", label: "32色" },
+                                        { value: "64", label: "64色" },
+                                        { value: "128", label: "128色" },
+                                        { value: "256", label: "256色" }
+                                    ]
+                                },
+                                {
+                                    key: "ditherStrength",
+                                    label: "ディザー",
+                                    type: "range",
+                                    value: 20,
+                                    min: 0,
+                                    max: 100,
+                                    step: 5,
+                                    unitLabel: "%"
                                 }
                             ]
                         },
@@ -1809,7 +2291,7 @@
                         const palettes = {
                             gb: ["#0f380f", "#306230", "#8bac0f", "#9bbc0f"],
                             mono: ["#111111", "#555555", "#aaaaaa", "#f5f5f5"],
-                            sunset: ["#1c1b3a", "#64436a", "#d16c4b", "#ffd27f"],
+                            sunset: ["#1c1b3a", "#64436a", "#d16c4b", "#ffd27f"]
                         };
 
                         const ditherPatterns = {
@@ -1833,14 +2315,36 @@
                             ],
                         };
 
+                        const pattern = ditherPatterns[patternKey] || ditherPatterns.mesh;
+                        const patternHeight = pattern.length;
+                        const patternWidth = pattern[0]?.length || 1;
+
+                        if (paletteKey === "original") {
+                            const maxAdjust = 160;
+                            for (let y = 0; y < h; y++) {
+                                for (let x = 0; x < w; x++) {
+                                    const idx = (y * w + x) * 4;
+                                    const r = data[idx];
+                                    const g = data[idx + 1];
+                                    const b = data[idx + 2];
+                                    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+                                    const sampleX = Math.floor(x / scale);
+                                    const sampleY = Math.floor(y / scale);
+                                    const threshold = pattern[sampleY % patternHeight][sampleX % patternWidth];
+                                    const diff = luminance - threshold;
+                                    const adjust = clamp(diff * 255 * intensity * 0.9, -maxAdjust, maxAdjust);
+                                    data[idx] = clamp(r + adjust, 0, 255);
+                                    data[idx + 1] = clamp(g + adjust, 0, 255);
+                                    data[idx + 2] = clamp(b + adjust, 0, 255);
+                                }
+                            }
+                            return;
+                        }
+
                         const paletteHex = palettes[paletteKey] || palettes.gb;
                         const palette = paletteHex.map((hex) => parseHexColor(hex));
                         const levels = palette.length - 1;
                         if (levels <= 0) return;
-
-                        const pattern = ditherPatterns[patternKey] || ditherPatterns.mesh;
-                        const patternHeight = pattern.length;
-                        const patternWidth = pattern[0]?.length || 1;
 
                         for (let y = 0; y < h; y++) {
                             for (let x = 0; x < w; x++) {
@@ -2099,6 +2603,24 @@
                                 }
                             }
                         }
+                    } else if (filter.type === 'colorquant') {
+                        const requestedValue = parseInt(filter.value, 10) || 16;
+                        const paramLevelsValue = parseInt(
+                            getFilterParamValue(filter, "levels", String(requestedValue)),
+                            10,
+                        );
+                        const snappedLevels = snapToAllowedColorLevel(paramLevelsValue);
+                        const ditherParam = parseInt(
+                            getFilterParamValue(filter, "ditherStrength", "0"),
+                            10,
+                        ) || 0;
+                        const ditherStrength = clamp(ditherParam / 100, 0, 1);
+                        applyExactColorQuantization(imageData, snappedLevels, ditherStrength);
+                        filter.value = snappedLevels;
+                        const levelsParam = filter.params?.find((p) => p.key === "levels");
+                        if (levelsParam) {
+                            levelsParam.value = String(snappedLevels);
+                        }
                     } else if (filter.type === 'haze') {
                         const amount = clamp(filter.value / 100, 0, 1);
                         if (amount === 0) return;
@@ -2125,6 +2647,12 @@
                 const handleImageFile = (file) => {
                     if (!file || !file.type.startsWith("image/")) return;
                     try {
+                    if (outputMeta) {
+                        outputMeta.classList.add("hidden");
+                    }
+                    if (outputDimensionsEl) {
+                        outputDimensionsEl.textContent = "-";
+                    }
                     updateCurrentFileMetadata(file.name, file.type);
                     const reader = new FileReader();
                     reader.onload = (e) => {
@@ -2259,15 +2787,22 @@
                                     try {
                                         const canvas = document.createElement('canvas');
                                         const ctx = canvas.getContext('2d', { willReadFrequently: true });
-                                        canvas.width = img.naturalWidth;
-                                        canvas.height = img.naturalHeight;
 
                                         const activeFilters = filters.filter(f => f.enabled);
+                                        const {
+                                            remaining: filtersWithoutResize,
+                                            targetWidth,
+                                            targetHeight
+                                        } = splitFiltersForResize(activeFilters, img.naturalWidth, img.naturalHeight);
+
+                                        canvas.width = targetWidth;
+                                        canvas.height = targetHeight;
+
                                         const customFilters = [];
                                         const cssFilters = [];
                                         const directionalBlurFilters = [];
 
-                                        activeFilters.forEach((f) => {
+                                        filtersWithoutResize.forEach((f) => {
                                             if (CUSTOM_FILTER_TYPES.includes(f.type)) {
                                                 customFilters.push(f);
                                             } else if (
@@ -2286,11 +2821,11 @@
                                             .join(' ');
 
                                         ctx.filter = cssFilterString.trim();
-                                        ctx.drawImage(img, 0, 0);
+                                        ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
 
                                         if (directionalBlurFilters.length > 0) {
                                             ctx.filter = 'none';
-                                            let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+                                            let imageData = ctx.getImageData(0, 0, targetWidth, targetHeight);
                                             directionalBlurFilters.forEach((filter) => {
                                                 const direction = filter.params?.[0]?.value || 'all';
                                                 if (direction === 'all') return;
@@ -2555,23 +3090,34 @@
                 const applyFiltersImmediate = () => {
                     if (!imageLoaded) return;
                     try {
+                    const baseWidth = originalImage.naturalWidth;
+                    const baseHeight = originalImage.naturalHeight;
+                    const activeFilters = filters.filter((f) => f.enabled);
+                    const {
+                        remaining: filtersWithoutResize,
+                        targetWidth,
+                        targetHeight,
+                    } = splitFiltersForResize(activeFilters, baseWidth, baseHeight);
+
+                    if (
+                        processingCanvas.width !== targetWidth ||
+                        processingCanvas.height !== targetHeight
+                    ) {
+                        processingCanvas.width = targetWidth;
+                        processingCanvas.height = targetHeight;
+                    }
+
                     const ctx = processingCanvas.getContext("2d", {
                         willReadFrequently: true,
                     });
-                    ctx.clearRect(
-                        0,
-                        0,
-                        processingCanvas.width,
-                        processingCanvas.height,
-                    );
+                    ctx.clearRect(0, 0, targetWidth, targetHeight);
 
                     // Separate filters
-                    const activeFilters = filters.filter((f) => f.enabled);
                     const customFilters = [];
                     const cssFilters = [];
                     const directionalBlurFilters = [];
 
-                    activeFilters.forEach((filter) => {
+                    filtersWithoutResize.forEach((filter) => {
                         if (CUSTOM_FILTER_TYPES.includes(filter.type)) {
                             customFilters.push(filter);
                         } else if (
@@ -2593,15 +3139,15 @@
 
                     // 1. Apply CSS filters (fastest)
                     ctx.filter = cssFilterString.trim();
-                    ctx.drawImage(originalImage, 0, 0);
+                    ctx.drawImage(originalImage, 0, 0, targetWidth, targetHeight);
 
                     if (directionalBlurFilters.length > 0) {
                         ctx.filter = 'none';
                         let imageData = ctx.getImageData(
                             0,
                             0,
-                            processingCanvas.width,
-                            processingCanvas.height,
+                            targetWidth,
+                            targetHeight,
                         );
                         directionalBlurFilters.forEach((filter) => {
                             const direction = filter.params?.[0]?.value || 'all';
@@ -2628,8 +3174,8 @@
                         let imageData = ctx.getImageData(
                             0,
                             0,
-                            processingCanvas.width,
-                            processingCanvas.height,
+                            targetWidth,
+                            targetHeight,
                         );
                         const w = imageData.width;
                         const h = imageData.height;
@@ -2643,8 +3189,8 @@
                     // 3. Apply pixelate filter last (most expensive)
                     if (pixelateFilter) {
                         const size = Math.max(1, pixelateFilter.value);
-                        const w = processingCanvas.width;
-                        const h = processingCanvas.height;
+                        const w = targetWidth;
+                        const h = targetHeight;
 
                         const tempCanvas = document.createElement("canvas");
                         const tempCtx = tempCanvas.getContext("2d");
@@ -2683,6 +3229,7 @@
 
                     // 4. Update preview image
                     previewImage.src = processingCanvas.toDataURL("image/png");
+                    updateOutputDimensions(targetWidth, targetHeight);
                     } catch (error) {
                         console.error('フィルター適用中にエラーが発生しました:', error);
                         alert('フィルター適用中にエラーが発生しました。画像またはフィルター設定を確認してください。');
@@ -2718,8 +3265,20 @@
                                     controlsHTML += `
                                         <div class="flex items-center gap-2 mt-2">
                                             <label class="text-xs text-slate-600 w-20">${param.label}</label>
-                                            <input type="range" min="${param.min}" max="${param.max}" step="${param.step || 1}" value="${param.value}" class="flex-1 slider" data-index="${index}" data-param="${param.key}">
+                                            <input type="range" min="${param.min ?? 0}" max="${param.max ?? 100}" step="${param.step || 1}" value="${param.value}" class="flex-1 slider" data-index="${index}" data-param="${param.key}">
                                             <span class="text-xs w-12 text-right">${param.value}${paramUnit}</span>
+                                        </div>
+                                    `;
+                                } else if (param.type === 'number') {
+                                    const minAttr = typeof param.min !== 'undefined' ? `min="${param.min}"` : '';
+                                    const maxAttr = typeof param.max !== 'undefined' ? `max="${param.max}"` : '';
+                                    const stepAttr = typeof param.step !== 'undefined' ? `step="${param.step}"` : 'step="1"';
+                                    const paramUnit = param.unitLabel || param.unit || "";
+                                    controlsHTML += `
+                                        <div class="flex items-center gap-2 mt-2">
+                                            <label class="text-xs text-slate-600 w-20">${param.label}</label>
+                                            <input type="number" class="flex-1 text-xs p-1 rounded border border-slate-300 number-input" data-index="${index}" data-param="${param.key}" value="${param.value}" ${minAttr} ${maxAttr} ${stepAttr}>
+                                            <span class="text-xs text-slate-500 whitespace-nowrap">${paramUnit}</span>
                                         </div>
                                     `;
                                 } else if (param.type === 'color') {
@@ -2818,6 +3377,29 @@
                         { type: 'vibrance', value: 150 },
                         { type: 'sharpen', value: 70 },
                         { type: 'pixelate', value: 4 },
+                    ],
+                    'dot-art': [
+                        {
+                            type: 'colorquant',
+                            value: 32,
+                            params: [
+                                { key: 'levels', value: '32' },
+                                { key: 'ditherStrength', value: 30 }
+                            ]
+                        },
+                        {
+                            type: 'dither',
+                            value: 65,
+                            params: [
+                                { key: 'palette', value: 'original' },
+                                { key: 'pattern', value: 'stagger' },
+                                { key: 'scale', value: 1 }
+                            ]
+                        },
+                        { type: 'pixelate', value: 2 },
+                        { type: 'contrast', value: 120 },
+                        { type: 'saturate', value: 105 },
+                        { type: 'sharpen', value: 70 },
                     ],
                     warm: [
                         { type: 'temperature', value: 85 },
@@ -2947,20 +3529,39 @@
                     const param = e.target.dataset.param;
 
                     if (e.target.classList.contains("slider")) {
-                        const value = e.target.value;
+                        const rawValue = e.target.value;
+                        const targetFilter = filters[index];
+                        const unitDisplay = targetFilter.unitLabel || targetFilter.unit || "";
 
                         if (param === "value") {
-                            filters[index].value = value;
-                            const unitDisplay = filters[index].unitLabel || filters[index].unit || "";
-                            e.target.nextElementSibling.textContent = `${value}${unitDisplay}`;
+                            if (targetFilter.type === "colorquant") {
+                                const numericValue = parseInt(rawValue, 10) || 16;
+                                const snapped = snapToAllowedColorLevel(numericValue);
+                                targetFilter.value = snapped;
+                                e.target.value = snapped;
+                                e.target.nextElementSibling.textContent = `${snapped}${unitDisplay}`;
+                                const levelsParam = targetFilter.params?.find((p) => p.key === "levels");
+                                if (levelsParam) {
+                                    levelsParam.value = String(snapped);
+                                }
+                            } else {
+                                targetFilter.value = rawValue;
+                                e.target.nextElementSibling.textContent = `${rawValue}${unitDisplay}`;
+                            }
                         } else {
                             // Update parameter value
-                            const paramObj = filters[index].params?.find(p => p.key === param);
+                            const paramObj = targetFilter.params?.find(p => p.key === param);
                             if (paramObj) {
-                                paramObj.value = value;
+                                paramObj.value = rawValue;
                                 const unitDisplay = paramObj.unitLabel || paramObj.unit || "";
-                                e.target.nextElementSibling.textContent = `${value}${unitDisplay}`;
+                                e.target.nextElementSibling.textContent = `${rawValue}${unitDisplay}`;
                             }
+                        }
+                        applyFilters();
+                    } else if (e.target.type === "number") {
+                        const paramObj = filters[index].params?.find(p => p.key === param);
+                        if (paramObj) {
+                            paramObj.value = e.target.value;
                         }
                         applyFilters();
                     } else if (e.target.type === "color") {
@@ -2995,9 +3596,26 @@
                     if (e.target.tagName === "SELECT") {
                         const index = e.target.dataset.index;
                         const param = e.target.dataset.param;
-                        const paramObj = filters[index].params?.find(p => p.key === param);
+                        const targetFilter = filters[index];
+                        let newValue = e.target.value;
+                        if (targetFilter.type === "colorquant" && param === "levels") {
+                            const numericValue = parseInt(newValue, 10) || 16;
+                            const snapped = snapToAllowedColorLevel(numericValue);
+                            targetFilter.value = snapped;
+                            const unitDisplay = targetFilter.unitLabel || targetFilter.unit || "";
+                            const slider = filterListEl.querySelector(`input.slider[data-index="${index}"][data-param="value"]`);
+                            if (slider) {
+                                slider.value = snapped;
+                                slider.nextElementSibling.textContent = `${snapped}${unitDisplay}`;
+                            }
+                            newValue = String(snapped);
+                            if (newValue !== e.target.value) {
+                                e.target.value = newValue;
+                            }
+                        }
+                        const paramObj = targetFilter.params?.find(p => p.key === param);
                         if (paramObj) {
-                            paramObj.value = e.target.value;
+                            paramObj.value = newValue;
                         }
                         applyFilters();
                     }
